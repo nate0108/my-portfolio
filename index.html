@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>배당 목표 트래커 (클라우드 실시간 동기화)</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -18,6 +18,13 @@
       --font-body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
       --font-num:'IBM Plex Mono',monospace;
     }
+    
+    [data-theme="dark"] {
+      --bg:#0f1a1f; --surface:#16252c; --fg:#e4edf0; --muted:#8fa3ac; --line:#26383f;
+      --accent:#4fc1bd; --accent-soft:#16363a; --on-accent:#06201f; --good:#5fcf8c; --good-soft:#163424;
+      --warn:#e8b45a; --warn-soft:#3a2f14; --bad:#ee8a7e; --bar-bg:#223239; color-scheme:dark;
+    }
+
     @media (prefers-color-scheme: dark){
       :root:not([data-theme="light"]){
         --bg:#0f1a1f; --surface:#16252c; --fg:#e4edf0; --muted:#8fa3ac; --line:#26383f;
@@ -25,75 +32,104 @@
         --warn:#e8b45a; --warn-soft:#3a2f14; --bad:#ee8a7e; --bar-bg:#223239; color-scheme:dark;
       }
     }
+
     *{box-sizing:border-box}
     body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.5;margin:0;padding:20px 16px 40px}
-    .wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+    .wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
     h1{font-size:22px;margin:0;font-weight:700}
     h2{font-size:15px;margin:0;font-weight:700}
     .sub{color:var(--muted);font-size:12.5px;margin:2px 0 0}
     .num{font-family:var(--font-num);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
     .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
-    .headr{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-    button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:5px 10px;cursor:pointer;transition:all 0.15s ease;}
+    .headr{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+    
+    button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:500;transition:all 0.15s ease}
+    button:hover{border-color:var(--accent)}
+    button.saveBtnMain{background:var(--good);border-color:var(--good);color:#ffffff;font-weight:700;padding:7px 16px;font-size:13.5px;box-shadow:0 2px 5px rgba(0,0,0,0.15)}
+    button.saveBtnMain:hover{opacity:0.92;transform:translateY(-1px)}
     button.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
-    button.saveBtn{background:var(--good);border-color:var(--good);color:#ffffff;font-weight:700;padding:6px 14px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
-    button.saveBtn:hover{opacity:0.9;transform:translateY(-1px)}
-    button.mini{font-size:11.5px;padding:2px 8px;color:var(--muted)}
+    button.mini{font-size:11.5px;padding:3px 8px;color:var(--muted)}
     button.mini.arm{color:var(--bad);border-color:var(--bad)}
-    button.toggleOn{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:500}
+    button.toggleOn{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
     button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+    
     .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
     .kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
     .kpi .l{font-size:12px;color:var(--muted)}
-    .kpi .v{font-family:var(--font-num);font-size:24px;font-weight:500;margin-top:2px}
+    .kpi .v{font-family:var(--font-num);font-size:24px;font-weight:600;margin-top:2px}
     .kpi .s{font-size:12px;color:var(--muted);margin-top:2px}
     .kpi.main{background:var(--accent);border-color:var(--accent)}
     .kpi.main .l,.kpi.main .s,.kpi.main .v{color:var(--on-accent)}
+    
     .panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-width:0}
     .panel>header{padding:14px 16px 10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
     .scroll{overflow-x:auto}
     table{border-collapse:collapse;width:100%;min-width:640px}
-    th,td{padding:9px 12px;border-top:1px solid var(--line);text-align:left;vertical-align:middle}
-    th{font-size:11.5px;font-weight:500;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
+    th,td{padding:9px 10px;border-top:1px solid var(--line);text-align:left;vertical-align:middle}
+    th{font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
     th.r{text-align:right}
     tr.cur td{background:var(--accent-soft)}
     tr.soldrow td, tr.soldrow input, tr.soldrow select {color:var(--muted) !important;}
     tr.soldrow input[type=number] {background:transparent;}
+    
     .bar{height:8px;background:var(--bar-bg);border-radius:4px;overflow:hidden;min-width:90px}
     .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
-    .pct{font-family:var(--font-num);font-weight:500;min-width:62px;text-align:right}
+    .pct{font-family:var(--font-num);font-weight:600;min-width:62px;text-align:right}
     .pcell{display:flex;align-items:center;gap:10px}
     .chip{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:10px;white-space:nowrap}
     .chip.done{background:var(--good-soft);color:var(--good)}
     .chip.now{background:var(--accent);color:var(--on-accent)}
     .chip.wait,.chip.sold{background:var(--bar-bg);color:var(--muted)}
+    
     input[type=number],input[type=text],input[type=password],select{font:inherit;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:4px 6px}
     input[type=number]{width:84px;font-family:var(--font-num);text-align:right}
     input:disabled,select:disabled{opacity:.45}
+    
     .ctl{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
     .ctl input{width:56px}
     .pos{color:var(--good)} .neg{color:var(--bad)}
-    td.cm{background:var(--accent-soft)}th.cm{color:var(--accent);font-weight:700}
+    td.cm{background:var(--accent-soft)} th.cm{color:var(--accent);font-weight:700}
     .tot td{font-weight:700;border-top:2px solid var(--line)}
     .foot{font-size:12px;color:var(--muted);line-height:1.6;padding:10px 16px 14px;margin:0}
     .tk{font-weight:700;font-family:var(--font-num)} .tn{font-size:11.5px;color:var(--muted)}
+    
     .addbox{border-top:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:10px}
     .addgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
     .addgrid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted);min-width:0}
     .addgrid input,.addgrid select{width:100%;font-family:var(--font-body);text-align:left}
     .addrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     .errmsg{font-size:12.5px;color:var(--bad)}
+    
     #saveState{font-size:12px;color:var(--good);font-weight:600;}
     #saveState.dirty{color:var(--warn);}
+    
     #lockOverlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
     .lockCard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
     .lockCard h2{font-size:18px;margin-bottom:8px}
     .lockCard p{font-size:13px;color:var(--muted);margin-bottom:20px}
     .lockCard input{width:100%;font-size:16px;padding:10px;text-align:center;margin-bottom:12px;letter-spacing:2px}
     .lockCard button{width:100%;padding:10px;font-size:14px}
-    .toolsRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+    
+    .toolsRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     select.statusSel{font-size:12px;padding:2px 4px;border-radius:4px}
-    .mxInput{width:68px;text-align:right;}
+    
+    /* 매트릭스 입력 셀 - 선명한 검정/밝은 폰트 스타일 지정 */
+    .mxInput{
+      width:68px;
+      text-align:right;
+      font-weight:600;
+      color:var(--fg) !important;
+      background:var(--surface) !important;
+      opacity:1 !important;
+    }
+    .mxInput::placeholder{
+      color:var(--muted);
+      font-weight:400;
+      text-align:center;
+    }
+    .mxInput.is-zero{
+      text-align:center;
+    }
   </style>
 </head>
 <body>
@@ -118,13 +154,14 @@
     </div>
     <div class="headr">
       <div class="toolsRow">
-        <button type="button" class="saveBtn" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
+        <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
+        <button type="button" id="themeBtn">🌙 다크모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
         <button type="button" class="mini" id="changePwBtn">🔑 암호 변경</button>
         <input type="file" id="fileInput" accept=".json" style="display:none">
       </div>
-      <div class="ctl" style="margin-top:4px"><label for="tax">원천징수세율</label> <input type="number" id="tax" min="0" max="50" step="0.1" value="15"> %</div>
+      <div class="ctl" style="margin-top:2px"><label for="tax">원천징수세율</label> <input type="number" id="tax" min="0" max="50" step="0.1" value="15"> %</div>
       <div id="saveState">☁️ 실시간 동기화 완료</div>
     </div>
   </div>
@@ -183,7 +220,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">미래 배당금은 현재 보유 주식수와 배당 DB/API 기준으로 연동되어 연한 글씨로 자동 입력됩니다. 수기 입력 시 수기 수령액이 최우선 적용됩니다.</p>
+    <p class="foot">미래 배당금은 보유 주식수 기준으로 가이드 분배되며, 수기 수정 시 수기 입력값이 우선 연동됩니다. (0은 -로 표시)</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -217,10 +254,15 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-// 실시간 매트릭스 수치 즉시 반영 전역 이벤트
+// 글로벌 매트릭스 실시간 입력 및 즉시 연동 핸들러
 window.updateOverride = function(rowIndex, monthIndex, val) {
-  if (window.appState && window.appState.over && window.appState.over[rowIndex]) {
-    window.appState.over[rowIndex][monthIndex] = (val === '' ? null : (parseFloat(val) || 0));
+  if (window.appState && window.appState.over) {
+    if (!window.appState.over[rowIndex]) {
+      window.appState.over[rowIndex] = new Array(12).fill(null);
+    }
+    var numVal = (val === '' ? null : parseFloat(val));
+    window.appState.over[rowIndex][monthIndex] = (isNaN(numVal) ? null : numVal);
+    
     window.markDirty();
     window.updateAppSummaryOnly();
   }
@@ -231,7 +273,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   var ALL=[1,2,3,4,5,6,7,8,9,10,11,12];
   var FREQ={monthly:{l:'월 배당',m:ALL}, q147:{l:'분기 (1·4·7·10월)',m:[1,4,7,10]}, q258:{l:'분기 (2·5·8·11월)',m:[2,5,8,11]}, q369:{l:'분기 (3·6·9·12월)',m:[3,6,9,12]}, semi:{l:'반기 (6·12월)',m:[6,12]}, annual:{l:'연 1회 (12월)',m:[12]}, none:{l:'배당 없음',m:[]}};
   
-  // 종목별 배당 주기 및 주당 배당금(DPS) 데이터베이스 (배당 API 연동 데이터)
   var DIV={
     GOOG:{name:'Alphabet Class C',per:0.20,months:[3,6,9,12]},
     KO:{name:'Coca-Cola',per:0.485,months:[4,7,10,12]},
@@ -249,6 +290,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   
   var KEY='divgoal.v2';
   var PW_KEY='divgoal_pw';
+  var THEME_KEY='divgoal_theme';
   var DEFAULT_PW = '2179';
   var hideSold = false;
   var isRemoteUpdating = false;
@@ -256,8 +298,32 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   function $(id){return document.getElementById(id)}
   function T(id,text,cls){var e=$(id);if(!e)return;e.textContent=text;if(cls!=null)e.className=cls}
   function esc(x){return String(x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-  function usd(x,d){if(d==null)d=2;return '$'+x.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
-  function sgn(x){return (x>=0?'+':'-')+usd(Math.abs(x))}
+  
+  // 0 표기를 가운데 정렬 - 로 처리하는 통화 포맷 함수
+  function usd(x, d){
+    if(x === 0 || x == null || isNaN(x)) return '-';
+    if(d == null) d = 2;
+    return '$' + x.toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+  }
+  function sgn(x){
+    if(x === 0 || x == null || isNaN(x)) return '-';
+    return (x >= 0 ? '+' : '-') + usd(Math.abs(x));
+  }
+
+  // 라이트/다크 모드 전환 로직
+  var savedTheme = localStorage.getItem(THEME_KEY) || 'light';
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    $('themeBtn').textContent = (theme === 'dark') ? '☀️ 라이트모드' : '🌙 다크모드';
+    localStorage.setItem(THEME_KEY, theme);
+  }
+  applyTheme(savedTheme);
+
+  $('themeBtn').addEventListener('click', function(){
+    var current = document.documentElement.getAttribute('data-theme') || 'light';
+    var next = (current === 'dark') ? 'light' : 'dark';
+    applyTheme(next);
+  });
 
   var savedPw = localStorage.getItem(PW_KEY) || DEFAULT_PW;
 
@@ -308,10 +374,14 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   });
 
   function normalize(st){
-    st.tax=(typeof st.tax==='number')?st.tax:15;
-    st.rows=(st.rows||[]).filter(function(r){return r&&r.t});
-    var o=Array.isArray(st.over)?st.over:[];
-    st.over=st.rows.map(function(r,i){var a=Array.isArray(o[i])?o[i].slice(0,12):[];while(a.length<12)a.push(null);return a});
+    st.tax = (typeof st.tax==='number') ? st.tax : 15;
+    st.rows = (st.rows||[]).filter(function(r){return r && r.t});
+    var o = Array.isArray(st.over) ? st.over : [];
+    st.over = st.rows.map(function(r, i){
+      var a = Array.isArray(o[i]) ? o[i].slice(0,12) : [];
+      while(a.length < 12) a.push(null);
+      return a;
+    });
     return st;
   }
 
@@ -320,13 +390,11 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   var state = normalize(initialData);
   window.appState = state;
 
-  // 수정 발생 시 UI 표기 변경
   window.markDirty = function(){
-    $('saveState').textContent = '✏️ 수정됨 (저장 버튼을 누르세요)';
+    $('saveState').textContent = '✏️ 수정됨 (저장 필요)';
     $('saveState').className = 'dirty';
   };
 
-  // Firebase 및 로컬 데이터 동시 저장
   function save(){
     if(isRemoteUpdating) return;
     try {
@@ -341,13 +409,11 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   }
   window.saveAppData = save;
 
-  // 최상단 저장 버튼 이벤트 연동
   $('mainSaveBtn').addEventListener('click', function(){
     save();
-    alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장 및 실시간 동기화되었습니다!');
+    alert('모든 수정사항이 클라우드(Firebase)에 저장 및 동기화되었습니다!');
   });
 
-  // Firebase 실시간 동기화 수신
   dbRef.on('value', function(snapshot){
     var val = snapshot.val();
     if(val && val.rows){
@@ -369,7 +435,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     $('saveState').textContent = '⚠️ 동기화 오류';
   });
 
-  var NOW=new Date();
+  var NOW = new Date();
 
   $('exportBtn').addEventListener('click', function(){
     var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
@@ -388,7 +454,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
         var imported = JSON.parse(evt.target.result);
         if(imported && Array.isArray(imported.rows)){
           state = normalize(imported); window.appState = state; save(); build(); update();
-          alert('백업 데이터를 성공적으로 불러왔습니다.');
+          alert('백업 데이터를 불러왔습니다.');
         }
       } catch(err){ alert('파일 읽기 오류'); }
     };
@@ -400,42 +466,43 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     return DIV[r.t]||{name:r.t,per:0,months:[]};
   }
 
-  // 핵심 연산 함수: 보유 수량 기준 미래 배당금 자동 계산 및 수기 입력 우선 반영
+  // 보유 주식수 기준 미래 배당금 자동 계산 및 수기 연동 핵심 함수
   function compute(st){
-    var keep=1-(st.tax||0)/100, mon=new Array(12).fill(0), pre=0, val=0, cost=0;
-    var per=st.rows.map(function(r, i){
-      var d=dvOf(r), sold=!!r.sold, q=sold?0:(+r.qty||0), pr=+r.price||0, c=+r.cost||0;
-      var annPer=d.per*d.months.length, annPre=annPer*q;
-      var m=new Array(12).fill(0);
+    var keep = 1 - (st.tax || 0) / 100;
+    var mon = new Array(12).fill(0);
+    var pre = 0, val = 0, cost = 0;
+    
+    var per = st.rows.map(function(r, i){
+      var d = dvOf(r), sold = !!r.sold, q = sold ? 0 : (+r.qty || 0), pr = +r.price || 0, c = +r.cost || 0;
+      var annPer = d.per * d.months.length, annPre = annPer * q;
+      var m = new Array(12).fill(0);
 
-      // 보유 주식수(q) x 배당금(d.per) x 세후비율(keep)로 미래 배당금 자동 분배
       d.months.forEach(function(x){
-        var est = sold ? 0 : d.per*q*keep;
-        m[x-1]=est;
+        var est = sold ? 0 : d.per * q * keep;
+        m[x-1] = est;
       });
       
-      // 수기 수정(over) 수치가 있으면 자동 계산값 대신 수기 입력값 연동
-      for(var j=0; j<12; j++){
+      for(var j = 0; j < 12; j++){
         var actualVal = (st.over && st.over[i] && st.over[i][j] != null) ? st.over[i][j] : m[j];
         mon[j] += actualVal;
       }
 
-      pre+=annPre; val+=q*pr; cost+=q*c;
-      return {t:r.t,name:d.name,sold:sold,q:q,pr:pr,c:c,value:q*pr,costTot:q*c,annPer:annPer,annPre:annPre,mon:m};
+      pre += annPre; val += q * pr; cost += q * c;
+      return {t:r.t, name:d.name, sold:sold, q:q, pr:pr, c:c, value:q*pr, costTot:q*c, annPer:annPer, annPre:annPre, mon:m};
     });
 
-    var totalYearPost = mon.reduce(function(a,b){return a+b;}, 0);
-    return {per:per,mon:mon,yearPre:pre,yearPost:totalYearPost,monthPost:totalYearPost/12,monthPre:pre/12,val:val,cost:cost,yld:val>0?totalYearPost/val:0};
+    var totalYearPost = mon.reduce(function(a, b){ return a + b; }, 0);
+    return {per:per, mon:mon, yearPre:pre, yearPost:totalYearPost, monthPost:totalYearPost/12, monthPre:pre/12, val:val, cost:cost, yld:val>0?totalYearPost/val:0};
   }
 
   function build(){
-    var cm=NOW.getMonth();
+    var cm = NOW.getMonth();
 
     // 1. 보유 종목 테이블
-    $('holdTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
+    $('holdTbl').querySelector('tbody').innerHTML = state.rows.map(function(r, i){
       if(hideSold && r.sold) return '';
-      var name=esc(dvOf(r).name), tk=esc(r.t);
-      var btns='<button type="button" class="mini" id="sb'+i+'">'+(r.sold?'보유 전환':'미보유 전환')+'</button> <button type="button" class="mini" id="rm'+i+'">삭제</button>';
+      var name = esc(dvOf(r).name), tk = esc(r.t);
+      var btns = '<button type="button" class="mini" id="sb'+i+'">'+(r.sold?'보유 전환':'미보유 전환')+'</button> <button type="button" class="mini" id="rm'+i+'">삭제</button>';
       if(r.sold){
         return '<tr class="soldrow"><td><div class="tk">'+tk+' <span class="chip sold">미보유</span></div><div class="tn">'+name+'</div></td><td colspan="8" class="tn">과거 배당 수령액 기록용</td><td class="num">'+btns+'</td></tr>';
       }
@@ -445,46 +512,48 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
         '<td class="num"><input type="number" id="p'+i+'" min="0" step="0.01" value="'+(r.price||'')+'"></td>'+
         '<td class="num" id="hv'+i+'"></td><td class="num" id="hp'+i+'"></td><td class="num" id="hr'+i+'"></td>'+
         '<td class="num" id="ha'+i+'"></td><td class="num" id="hy'+i+'"></td><td class="num">'+btns+'</td></tr>';
-    }).join('')+'<tr class="tot"><td>합계</td><td></td><td class="num" id="tc"></td><td></td><td class="num" id="tv"></td><td class="num" id="tp"></td><td class="num" id="tr"></td><td class="num" id="ta"></td><td class="num" id="ty"></td><td></td></tr>';
+    }).join('') + '<tr class="tot"><td>합계</td><td></td><td class="num" id="tc"></td><td></td><td class="num" id="tv"></td><td class="num" id="tp"></td><td class="num" id="tr"></td><td class="num" id="ta"></td><td class="num" id="ty"></td><td></td></tr>';
 
-    state.rows.forEach(function(r,i){
+    state.rows.forEach(function(r, i){
       if(hideSold && r.sold) return;
       if(!r.sold){
         ['q','c','p'].forEach(function(k){
-          var el=$(k+i); 
-          if(el) el.addEventListener('input',function(e){
-            state.rows[i][{q:'qty',c:'cost',p:'price'}[k]]=parseFloat(e.target.value)||0; 
+          var el = $(k+i); 
+          if(el) el.addEventListener('input', function(e){
+            state.rows[i][{q:'qty',c:'cost',p:'price'}[k]] = parseFloat(e.target.value) || 0; 
             window.markDirty();
             update();
           });
         });
       }
-      var sb = $('sb'+i); if(sb) sb.addEventListener('click',function(){r.sold=!r.sold; save(); build(); update()});
-      var rb=$('rm'+i), t2=null;
-      if(rb) rb.addEventListener('click',function(){
-        if(rb.className.indexOf('arm')<0){rb.className='mini arm';rb.textContent='정말 삭제?';t2=setTimeout(function(){rb.className='mini';rb.textContent='삭제'},3000);return}
-        clearTimeout(t2); state.rows.splice(i,1); state.over.splice(i,1); save(); build(); update();
+      var sb = $('sb'+i); if(sb) sb.addEventListener('click', function(){ r.sold = !r.sold; save(); build(); update(); });
+      var rb = $('rm'+i), t2 = null;
+      if(rb) rb.addEventListener('click', function(){
+        if(rb.className.indexOf('arm') < 0){ rb.className='mini arm'; rb.textContent='정말 삭제?'; t2=setTimeout(function(){ rb.className='mini'; rb.textContent='삭제'; }, 3000); return; }
+        clearTimeout(t2); state.rows.splice(i, 1); state.over.splice(i, 1); save(); build(); update();
       });
     });
 
     // 2. 월별 배당 매트릭스 테이블
-    $('mxTbl').querySelector('thead').innerHTML='<tr><th>종목</th><th style="width:90px">보유 상태</th>'+MONTHS.map(function(m,j){return '<th class="r'+(j===cm?' cm':'')+'">'+m+'</th>'}).join('')+'<th class="r">연 합계</th></tr>';
+    $('mxTbl').querySelector('thead').innerHTML = '<tr><th>종목</th><th style="width:90px">보유 상태</th>' + MONTHS.map(function(m, j){ return '<th class="r'+(j===cm?' cm':'')+'">'+m+'</th>'; }).join('') + '<th class="r">연 합계</th></tr>';
     
-    var c=compute(state);
-    $('mxTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
+    var c = compute(state);
+    $('mxTbl').querySelector('tbody').innerHTML = state.rows.map(function(r, i){
       if(hideSold && r.sold) return '';
       var statusSel = '<select class="statusSel" id="msel'+i+'"><option value="held" '+(r.sold?'':'selected')+'>보유</option><option value="sold" '+(r.sold?'selected':'')+'>미보유</option></select>';
       var rowClass = r.sold ? ' class="soldrow"' : '';
-      return '<tr'+rowClass+'><td class="tk">'+esc(r.t)+(r.sold?' <span class="chip sold">미보유</span>':'')+'</td><td>'+statusSel+'</td>'+MONTHS.map(function(m,j){
-        var cls=(j===cm?' cm':'');
-        var v=(state.over && state.over[i]) ? state.over[i][j] : null;
+      return '<tr'+rowClass+'><td class="tk">'+esc(r.t)+(r.sold?' <span class="chip sold">미보유</span>':'')+'</td><td>'+statusSel+'</td>' + MONTHS.map(function(m, j){
+        var cls = (j === cm ? ' cm' : '');
+        var v = (state.over && state.over[i]) ? state.over[i][j] : null;
         var est = c.per[i] ? c.per[i].mon[j] : 0;
         var ph = est ? est.toFixed(2) : '-';
-        return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" value="'+(v!=null?v:'')+'" oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
-      }).join('')+'<td class="num" id="mt'+i+'"></td></tr>';
-    }).join('')+'<tr class="tot"><td>월 합계</td><td></td>'+MONTHS.map(function(m,j){return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'}).join('')+'<td class="num" id="mst"></td></tr>';
+        var valAttr = (v != null) ? 'value="' + v + '"' : '';
+        var zeroCls = (v === 0) ? ' is-zero' : '';
+        return '<td class="num'+cls+'"><input type="number" class="mxInput'+zeroCls+'" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" '+valAttr+' oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
+      }).join('') + '<td class="num" id="mt'+i+'"></td></tr>';
+    }).join('') + '<tr class="tot"><td>월 합계</td><td></td>' + MONTHS.map(function(m, j){ return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'; }).join('') + '<td class="num" id="mst"></td></tr>';
 
-    state.rows.forEach(function(r,i){
+    state.rows.forEach(function(r, i){
       if(hideSold && r.sold) return;
       var msel = $('msel'+i);
       if(msel){
@@ -494,87 +563,87 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       }
     });
 
-    $('phaseTbl').querySelector('tbody').innerHTML=PHASES.map(function(p){
+    $('phaseTbl').querySelector('tbody').innerHTML = PHASES.map(function(p){
       return '<tr id="ph'+p.n+'"><td><b>Phase '+p.n+'</b></td><td>'+p.u+'</td><td class="num">'+usd(p.g,0)+'</td><td><div class="pcell"><div class="bar" style="flex:1"><i id="pb'+p.n+'" style="width:0%"></i></div><span class="pct" id="pp'+p.n+'"></span></div></td><td class="num" id="ps'+p.n+'"></td><td class="num" id="pc'+p.n+'"></td><td id="pt'+p.n+'"></td></tr>';
     }).join('');
   }
 
-  // 실시간 즉시 합계 재계산 및 UI 업데이트
+  // 매트릭스 입력 시 즉시 합계 재계산 연동
   function update(){
-    var c=compute(state);
-    T('kMonth',usd(c.monthPost)); T('kMonthPre','세전 '+usd(c.monthPre));
-    T('kYear',usd(c.yearPost,0)); T('kYearPre','세전 '+usd(c.yearPre,0));
-    T('kVal',usd(c.val,0)); T('kYld','세후 배당수익률 '+(c.yld*100).toFixed(2)+'%');
+    var c = compute(state);
+    T('kMonth', usd(c.monthPost)); T('kMonthPre', '세전 ' + usd(c.monthPre));
+    T('kYear', usd(c.yearPost, 0)); T('kYearPre', '세전 ' + usd(c.yearPre, 0));
+    T('kVal', usd(c.val, 0)); T('kYld', '세후 배당수익률 ' + (c.yld * 100).toFixed(2) + '%');
 
-    var cur=null;
+    var cur = null;
     PHASES.forEach(function(p){
-      var pct=c.monthPost/p.g*100, done=pct>=100;
-      if(!done&&cur===null)cur=p;
-      var short=Math.max(0,p.g-c.monthPost);
-      $('pb'+p.n).style.width=Math.min(100,pct)+'%';
-      T('pp'+p.n,pct.toFixed(1)+'%');
-      T('ps'+p.n,done?'-':usd(short));
-      T('pc'+p.n,done?'-':(c.yld>0?usd(short*12/c.yld,0):'-'));
-      $('ph'+p.n).className=(cur&&cur.n===p.n)?'cur':'';
-      $('pt'+p.n).innerHTML=done?'<span class="chip done">달성</span>':((cur&&cur.n===p.n)?'<span class="chip now">진행 중</span>':'<span class="chip wait">대기</span>');
+      var pct = c.monthPost / p.g * 100, done = pct >= 100;
+      if(!done && cur === null) cur = p;
+      var short = Math.max(0, p.g - c.monthPost);
+      $('pb'+p.n).style.width = Math.min(100, pct) + '%';
+      T('pp'+p.n, pct.toFixed(1) + '%');
+      T('ps'+p.n, done ? '-' : usd(short));
+      T('pc'+p.n, done ? '-' : (c.yld > 0 ? usd(short * 12 / c.yld, 0) : '-'));
+      $('ph'+p.n).className = (cur && cur.n === p.n) ? 'cur' : '';
+      $('pt'+p.n).innerHTML = done ? '<span class="chip done">달성</span>' : ((cur && cur.n === p.n) ? '<span class="chip now">진행 중</span>' : '<span class="chip wait">대기</span>');
     });
 
-    if(cur){T('kPhase','Phase '+cur.n);T('kPhaseSub',(c.monthPost/cur.g*100).toFixed(1)+'% · 목표 '+usd(cur.g,0)+'/월')}
-    else{T('kPhase','전 단계 달성');T('kPhaseSub','Phase 6 달성')}
+    if(cur){ T('kPhase', 'Phase ' + cur.n); T('kPhaseSub', (c.monthPost / cur.g * 100).toFixed(1) + '% · 목표 ' + usd(cur.g, 0) + '/월'); }
+    else{ T('kPhase', '전 단계 달성'); T('kPhaseSub', 'Phase 6 달성'); }
 
-    var tv=0,tc=0;
-    c.per.forEach(function(r,i){
+    var tv = 0, tc = 0;
+    c.per.forEach(function(r, i){
       if(!r.sold){
-        var pl=r.value-r.costTot, ret=r.costTot>0?pl/r.costTot*100:0, has=r.pr&&r.costTot;
-        T('hv'+i,r.pr?usd(r.value):'-');
-        T('hp'+i,has?sgn(pl):'-','num '+(pl>=0?'pos':'neg'));
-        T('hr'+i,has?(ret>=0?'+':'')+ret.toFixed(1)+'%':'-','num '+(pl>=0?'pos':'neg'));
-        T('ha'+i,r.annPer?usd(r.annPer,3):'없음');
-        T('hy'+i,r.annPer&&r.pr?(r.annPer/r.pr*100).toFixed(2)+'%':'-');
-        tv+=r.pr?r.value:0; tc+=r.pr?r.costTot:0;
+        var pl = r.value - r.costTot, ret = r.costTot > 0 ? pl / r.costTot * 100 : 0, has = r.pr && r.costTot;
+        T('hv'+i, r.pr ? usd(r.value) : '-');
+        T('hp'+i, has ? sgn(pl) : '-', 'num ' + (pl >= 0 ? 'pos' : 'neg'));
+        T('hr'+i, has ? (ret >= 0 ? '+' : '') + ret.toFixed(1) + '%' : '-', 'num ' + (pl >= 0 ? 'pos' : 'neg'));
+        T('ha'+i, r.annPer ? usd(r.annPer, 3) : '없음');
+        T('hy'+i, r.annPer && r.pr ? (r.annPer / r.pr * 100).toFixed(2) + '%' : '-');
+        tv += r.pr ? r.value : 0; tc += r.pr ? r.costTot : 0;
       }
-      var tot=0;
-      for(var j=0;j<12;j++){
-        var est=r.mon[j], ov=(state.over && state.over[i]) ? state.over[i][j] : null;
-        var val = (ov!=null ? ov : est);
+      var tot = 0;
+      for(var j = 0; j < 12; j++){
+        var est = r.mon[j], ov = (state.over && state.over[i]) ? state.over[i][j] : null;
+        var val = (ov != null ? ov : est);
         tot += val;
       }
-      T('mt'+i,tot?usd(tot):'-');
+      T('mt'+i, usd(tot));
     });
 
-    T('tc',usd(tc,0)); T('tv',usd(tv,0));
-    var tpl=tv-tc;
-    T('tp',tc?sgn(tpl):'-','num '+(tpl>=0?'pos':'neg'));
-    T('tr',tc?((tpl>=0?'+':'')+(tpl/tc*100).toFixed(1)+'%'):'-','num '+(tpl>=0?'pos':'neg'));
-    T('ta',usd(c.yearPre,0)+' (세전)'); T('ty',tv?(c.yearPre/tv*100).toFixed(2)+'%':'-');
+    T('tc', usd(tc, 0)); T('tv', usd(tv, 0));
+    var tpl = tv - tc;
+    T('tp', tc ? sgn(tpl) : '-', 'num ' + (tpl >= 0 ? 'pos' : 'neg'));
+    T('tr', tc ? ((tpl >= 0 ? '+' : '') + (tpl / tc * 100).toFixed(1) + '%') : '-', 'num ' + (tpl >= 0 ? 'pos' : 'neg'));
+    T('ta', usd(c.yearPre, 0) + ' (세전)'); T('ty', tv ? (c.yearPre / tv * 100).toFixed(2) + '%' : '-');
 
-    var grand=0, entered=0, actSum=0, estSum=0;
-    for(var j=0;j<12;j++){
-      var col=0;
-      c.per.forEach(function(r,i){
-        var ov=(state.over && state.over[i]) ? state.over[i][j] : null;
-        if(ov!=null){col+=ov;entered++;actSum+=ov;estSum+=r.mon[j]}else col+=r.mon[j];
+    var grand = 0, entered = 0, actSum = 0, estSum = 0;
+    for(var j = 0; j < 12; j++){
+      var col = 0;
+      c.per.forEach(function(r, i){
+        var ov = (state.over && state.over[i]) ? state.over[i][j] : null;
+        if(ov != null){ col += ov; entered++; actSum += ov; estSum += r.mon[j]; } else col += r.mon[j];
       });
-      grand+=col; T('ms'+j,usd(col));
+      grand += col; T('ms'+j, usd(col));
     }
-    T('mst',usd(grand));
-    T('mxSub',entered?('수기 입력 실적 '+entered+'칸 · 실적 '+usd(actSum)+' / 해당 예상 '+usd(estSum)):'월 평균 '+usd(c.monthPost));
+    T('mst', usd(grand));
+    T('mxSub', entered ? ('수기 입력 실적 ' + entered + '칸 · 실적 ' + usd(actSum) + ' / 해당 예상 ' + usd(estSum)) : '월 평균 ' + usd(c.monthPost));
   }
   window.updateAppSummaryOnly = update;
 
   $('addHoldForm').addEventListener('submit', function(e){
     e.preventDefault();
-    var msg=$('hnmsg'); msg.textContent='';
-    var t=$('hnt').value.trim().toUpperCase();
-    if(!/^[A-Z0-9.\-]{1,10}$/.test(t)){msg.textContent='티커는 영문 대문자와 숫자로 입력하세요.';return}
-    if(state.rows.some(function(r){return r.t===t})){msg.textContent=t+'는 이미 목록에 있습니다.';return}
+    var msg = $('hnmsg'); msg.textContent = '';
+    var t = $('hnt').value.trim().toUpperCase();
+    if(!/^[A-Z0-9.\-]{1,10}$/.test(t)){ msg.textContent = '티커는 영문 대문자와 숫자로 입력하세요.'; return; }
+    if(state.rows.some(function(r){ return r.t === t; })){ msg.textContent = t + '는 이미 목록에 있습니다.'; return; }
     
-    var nm=$('hnn').value.trim();
-    var q=parseFloat($('hnq').value)||0;
-    var c=parseFloat($('hnc').value)||0;
+    var nm = $('hnn').value.trim();
+    var q = parseFloat($('hnq').value) || 0;
+    var c = parseFloat($('hnc').value) || 0;
 
-    var row={t:t, qty:q, cost:c, price:c, sold:false};
-    if(nm) row.div={per:0, freq:'q369', name:nm};
+    var row = {t:t, qty:q, cost:c, price:c, sold:false};
+    if(nm) row.div = {per:0, freq:'q369', name:nm};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
     save(); build(); update();
@@ -583,26 +652,26 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
 
   $('addForm').addEventListener('submit', function(e){
     e.preventDefault();
-    var msg=$('nmsg'); msg.textContent='';
-    var t=$('nt').value.trim().toUpperCase();
-    if(!/^[A-Z0-9.\-]{1,10}$/.test(t)){msg.textContent='티커는 영문 대문자와 숫자로 입력하세요.';return}
-    if(state.rows.some(function(r){return r.t===t})){msg.textContent=t+'는 이미 목록에 있습니다.';return}
+    var msg = $('nmsg'); msg.textContent = '';
+    var t = $('nt').value.trim().toUpperCase();
+    if(!/^[A-Z0-9.\-]{1,10}$/.test(t)){ msg.textContent = '티커는 영문 대문자와 숫자로 입력하세요.'; return; }
+    if(state.rows.some(function(r){ return r.t === t; })){ msg.textContent = t + '는 이미 목록에 있습니다.'; return; }
     
-    var sold=$('ns').value==='sold';
-    var nm=$('nn').value.trim();
+    var sold = $('ns').value === 'sold';
+    var nm = $('nn').value.trim();
 
-    var row={t:t, qty:0, cost:0, price:0, sold:sold};
-    if(nm) row.div={per:0, freq:'q369', name:nm};
+    var row = {t:t, qty:0, cost:0, price:0, sold:sold};
+    if(nm) row.div = {per:0, freq:'q369', name:nm};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
     save(); build(); update();
     $('addForm').reset();
   });
 
-  $('tax').value=state.tax;
-  $('tax').addEventListener('input',function(e){
-    var v=parseFloat(e.target.value);
-    state.tax=isNaN(v)?0:v;
+  $('tax').value = state.tax;
+  $('tax').addEventListener('input', function(e){
+    var v = parseFloat(e.target.value);
+    state.tax = isNaN(v) ? 0 : v;
     window.markDirty();
     update();
   });
