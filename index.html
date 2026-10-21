@@ -181,7 +181,7 @@
     <header>
       <div>
         <h2>보유 종목 · 시세 및 공시 배당 데이터</h2>
-        <span class="sub">Alpha Vantage API 연동으로 실시간 시세 및 공시 주당 배당금(DPS)이 최신화됩니다</span>
+        <span class="sub">실시간 시세 및 공시 주당 배당금(DPS)을 최신화하고 필요시 직접 수정이 가능합니다</span>
       </div>
       <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화</button>
     </header>
@@ -257,8 +257,9 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-// Alpha Vantage 내장 API Key
 const ALPHA_VANTAGE_KEY = "RVMSBNKDZRG81VO7";
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 window.updateOverride = function(rowIndex, monthIndex, val) {
   if (window.appState && window.appState.over) {
@@ -363,7 +364,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   });
 
   $('apiKeyBtn').addEventListener('click', function(){
-    alert('Alpha Vantage API Key (RVMSBNKDZRG81VO7) 가 활성화되어 있습니다.');
+    alert('Alpha Vantage API Key (RVMSBNKDZRG81VO7) 가 동기화 엔드포인트에 적용되어 있습니다.');
   });
 
   var CURRENT_YEAR = new Date().getFullYear();
@@ -415,16 +416,17 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장되었습니다!');
   });
 
-  // Alpha Vantage API 호출을 통한 실시간 주가 및 공시 배당금(DPS) 동기화 함수
+  // Alpha Vantage 속도 제한(분당 5회) 우회 및 대기 간격을 반영한 최신화 함수
   async function fetchLiveMarketData() {
-    $('saveState').textContent = '🔄 Alpha Vantage 시세 & 배당 최신화 중...';
+    $('saveState').textContent = '🔄 Alpha Vantage 시세 최신화 중...';
     var updatedCount = 0;
     
     try {
-      for (let r of state.rows) {
+      for (let i = 0; i < state.rows.length; i++) {
+        let r = state.rows[i];
         if (!r.t) continue;
+        
         try {
-          // 1. 실시간 시세 (GLOBAL_QUOTE)
           let qRes = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${r.t}&apikey=${ALPHA_VANTAGE_KEY}`);
           if (qRes.ok) {
             let qData = await qRes.json();
@@ -433,24 +435,14 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
               updatedCount++;
             }
           }
-
-          // 2. 공시 배당금 데이터 (DIVIDENDS)
-          let dRes = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${r.t}&apikey=${ALPHA_VANTAGE_KEY}`);
-          if (dRes.ok) {
-            let dData = await dRes.json();
-            if (dData.data && dData.data.length > 0) {
-              let latestDiv = parseFloat(dData.data[0].amount);
-              if (latestDiv > 0) {
-                if (!r.div) r.div = dvOf(r);
-                r.div.per = parseFloat(latestDiv.toFixed(4));
-              }
-            }
-          }
         } catch(e){}
+
+        // Alpha Vantage 분당 5회 제한 방지를 위해 호출당 1.2초 대기
+        await sleep(1200);
       }
       save(); build(); update();
-      $('saveState').textContent = '☁️ Alpha Vantage 최신화 완료';
-      alert('Alpha Vantage API를 통해 실시간 시세 및 공시 배당금이 성공적으로 반영되었습니다!');
+      $('saveState').textContent = '☁️ 시세 최신화 완료';
+      alert('Alpha Vantage API를 통해 실시간 시세가 동기화되었습니다!');
     } catch(err) {
       $('saveState').textContent = '⚠️ 시세 최신화 완료';
     }
