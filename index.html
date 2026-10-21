@@ -55,7 +55,7 @@
     th{font-size:11.5px;font-weight:500;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
     th.r{text-align:right}
     tr.cur td{background:var(--accent-soft)}
-    tr.soldrow td, tr.soldrow input, tr.soldrow select {color:var(--muted) !important; opacity:0.85;}
+    tr.soldrow td, tr.soldrow input, tr.soldrow select {color:var(--muted) !important;}
     tr.soldrow input[type=number] {background:transparent;}
     .bar{height:8px;background:var(--bar-bg);border-radius:4px;overflow:hidden;min-width:90px}
     .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
@@ -194,7 +194,7 @@
 
 <script>
 // -------------------------------------------------------------
-// 1. Firebase 설정
+// Firebase 설정 및 초기화
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -211,6 +211,15 @@ if (!firebase.apps.length) {
 }
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
+
+// 글로벌 입력 핸들러 (전역 스코프 바인딩)
+window.updateOverride = function(rowIndex, monthIndex, val) {
+  if (window.appState && window.appState.over) {
+    window.appState.over[rowIndex][monthIndex] = (val === '' ? null : (parseFloat(val) || 0));
+    window.saveAppData();
+    window.updateAppSummary();
+  }
+};
 
 (function(){
   var MONTHS=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
@@ -291,6 +300,7 @@ const dbRef = db.ref("dividend_tracker_data");
   var localSaved = localStorage.getItem(KEY);
   var initialData = localSaved ? JSON.parse(localSaved) : {tax:15, rows:JSON.parse(JSON.stringify(INIT))};
   var state = normalize(initialData);
+  window.appState = state;
 
   function save(){
     if(isRemoteUpdating) return;
@@ -299,12 +309,14 @@ const dbRef = db.ref("dividend_tracker_data");
       dbRef.set(state);
     } catch(e){}
   }
+  window.saveAppData = save;
 
   dbRef.on('value', function(snapshot){
     var val = snapshot.val();
     if(val && val.rows){
       isRemoteUpdating = true;
       state = normalize(val);
+      window.appState = state;
       localStorage.setItem(KEY, JSON.stringify(state));
       build(); update();
       isRemoteUpdating = false;
@@ -336,7 +348,7 @@ const dbRef = db.ref("dividend_tracker_data");
       try{
         var imported = JSON.parse(evt.target.result);
         if(imported && Array.isArray(imported.rows)){
-          state = normalize(imported); save(); build(); update();
+          state = normalize(imported); window.appState = state; save(); build(); update();
           alert('백업 데이터를 불러왔습니다.');
         }
       } catch(err){ alert('파일 읽기 오류'); }
@@ -411,36 +423,20 @@ const dbRef = db.ref("dividend_tracker_data");
         var c=(j===cm?' cm':'');
         if(PAST[j]){
           var v=state.over[i][j]; 
-          return '<td class="num'+c+'"><input type="number" id="o'+i+'_'+j+'" min="0" step="0.01" style="width:68px" value="'+(v!=null?v:'')+'"></td>';
+          return '<td class="num'+c+'"><input type="number" id="o'+i+'_'+j+'" min="0" step="0.01" style="width:68px" value="'+(v!=null?v:'')+'" oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
         }
         return '<td class="num'+c+'" id="m'+i+'_'+j+'"></td>';
       }).join('')+'<td class="num" id="mt'+i+'"></td></tr>';
     }).join('')+'<tr class="tot"><td>월 합계</td><td></td>'+MONTHS.map(function(m,j){return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'}).join('')+'<td class="num" id="mst"></td></tr>';
 
-    // 매트릭스 테이블 이벤트 바인딩 (보유/미보유 관계없이 모든 행에 등록)
     state.rows.forEach(function(r,i){
       if(hideSold && r.sold) return;
-      
       var msel = $('msel'+i);
       if(msel){
         msel.addEventListener('change', function(e){
           state.rows[i].sold = (e.target.value === 'sold'); save(); build(); update();
         });
       }
-
-      // 과거 달 배당금 직접 입력 이벤트 (미보유 종목도 정상 동작하도록 무조건 등록)
-      MONTHS.forEach(function(m,j){
-        if(!PAST[j]) return;
-        var oInp = $('o'+i+'_'+j);
-        if(oInp){
-          oInp.addEventListener('input', function(e){
-            var v = e.target.value;
-            state.over[i][j] = (v === '' ? null : (parseFloat(v) || 0));
-            save(); 
-            update();
-          });
-        }
-      });
     });
 
     $('phaseTbl').querySelector('tbody').innerHTML=PHASES.map(function(p){
@@ -514,6 +510,7 @@ const dbRef = db.ref("dividend_tracker_data");
     T('mst',usd(grand));
     T('mxSub',entered?('입력한 실적 '+entered+'칸 · 실적 '+usd(actSum)+' / 같은 칸 예상 '+usd(estSum)):'월 평균 '+usd(c.monthPost));
   }
+  window.updateAppSummary = update;
 
   $('addHoldForm').addEventListener('submit', function(e){
     e.preventDefault();
