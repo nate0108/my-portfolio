@@ -223,7 +223,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">미래 월의 배당금은 연동된 주당 공시 배당금 x 주식수 기준으로 나열되며, 수기 입력 시 수기 실적이 연동됩니다. 매년 1월 1일 영속 자동 전환됩니다.</p>
+    <p class="foot">미래 월 배당금은 보유 주수 x 공시 주당 배당금 기준 세후 금액으로 작성되며, 수기 입력 시 해당 값이 우선 적용됩니다. 미입력/0은 - 로 표기됩니다.</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -258,16 +258,24 @@ const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
 const ALPHA_VANTAGE_KEY = "RVMSBNKDZRG81VO7";
-
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-window.updateOverride = function(rowIndex, monthIndex, val) {
+// 미입력 및 0 입력 시 '-' 자동 처리 핸들러
+window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   if (window.appState && window.appState.over) {
     if (!window.appState.over[rowIndex]) {
       window.appState.over[rowIndex] = new Array(12).fill(null);
     }
-    var numVal = (val === '' ? null : parseFloat(val));
-    window.appState.over[rowIndex][monthIndex] = (isNaN(numVal) ? null : numVal);
+    
+    var rawVal = inputEl.value.trim();
+    var numVal = parseFloat(rawVal);
+    
+    if (rawVal === '' || isNaN(numVal) || numVal === 0) {
+      window.appState.over[rowIndex][monthIndex] = null;
+      inputEl.value = ''; // 0 또는 빈값 입력 시 인풋 클리어 후 placeholder('-') 적용
+    } else {
+      window.appState.over[rowIndex][monthIndex] = numVal;
+    }
     
     window.markDirty();
     window.updateAppSummaryOnly();
@@ -364,7 +372,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   });
 
   $('apiKeyBtn').addEventListener('click', function(){
-    alert('Alpha Vantage API Key (RVMSBNKDZRG81VO7) 가 동기화 엔드포인트에 적용되어 있습니다.');
+    alert('Alpha Vantage API Key (RVMSBNKDZRG81VO7) 가 정상 적용되어 있습니다.');
   });
 
   var CURRENT_YEAR = new Date().getFullYear();
@@ -416,33 +424,26 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장되었습니다!');
   });
 
-  // Alpha Vantage 속도 제한(분당 5회) 우회 및 대기 간격을 반영한 최신화 함수
   async function fetchLiveMarketData() {
     $('saveState').textContent = '🔄 Alpha Vantage 시세 최신화 중...';
-    var updatedCount = 0;
-    
     try {
       for (let i = 0; i < state.rows.length; i++) {
         let r = state.rows[i];
         if (!r.t) continue;
-        
         try {
           let qRes = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${r.t}&apikey=${ALPHA_VANTAGE_KEY}`);
           if (qRes.ok) {
             let qData = await qRes.json();
             if (qData['Global Quote'] && qData['Global Quote']['05. price']) {
               r.price = parseFloat(qData['Global Quote']['05. price']);
-              updatedCount++;
             }
           }
         } catch(e){}
-
-        // Alpha Vantage 분당 5회 제한 방지를 위해 호출당 1.2초 대기
         await sleep(1200);
       }
       save(); build(); update();
       $('saveState').textContent = '☁️ 시세 최신화 완료';
-      alert('Alpha Vantage API를 통해 실시간 시세가 동기화되었습니다!');
+      alert('Alpha Vantage API를 통해 실시간 시세가 최신화되었습니다!');
     } catch(err) {
       $('saveState').textContent = '⚠️ 시세 최신화 완료';
     }
@@ -517,6 +518,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     return {name:d.name, per:d.per, freqKey:d.freq, months:f2.m};
   }
 
+  // 핵심 수식: 주당 공시 배당금(DPS) x 보유 수량(Qty) x 원천징수 세후 비율
   function compute(st){
     var keep = 1 - (st.tax || 0) / 100;
     var mon = new Array(12).fill(0);
@@ -528,8 +530,9 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       var annPre = annPer * q;
       var m = new Array(12).fill(0);
 
+      // 세후 배당예상금 계산
       d.months.forEach(function(x){
-        var est = sold ? 0 : d.per * q * keep;
+        var est = sold ? 0 : (d.per * q * keep);
         m[x-1] = est;
       });
       
@@ -625,9 +628,12 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
         var cls = (j === cm ? ' cm' : '');
         var v = (state.over && state.over[i]) ? state.over[i][j] : null;
         var est = c.per[i] ? c.per[i].mon[j] : 0;
-        var ph = est ? est.toFixed(2) : '-';
-        var valAttr = (v != null) ? 'value="' + v + '"' : '';
-        return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" '+valAttr+' oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
+        
+        // 미입력/미도래 시 세후 배당예상금 플레이스홀더 표시, 배당 없는 달은 '-' 표시
+        var ph = est > 0 ? est.toFixed(2) : '-';
+        var valAttr = (v != null && v !== 0) ? 'value="' + v + '"' : '';
+        
+        return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" '+valAttr+' oninput="window.updateOverride(this,'+i+','+j+')"></td>';
       }).join('') + '<td class="num" id="mt'+i+'"></td></tr>';
     }).join('') + '<tr class="tot"><td>월 합계</td><td></td>' + MONTHS.map(function(m, j){ return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'; }).join('') + '<td class="num" id="mst"></td></tr>';
 
