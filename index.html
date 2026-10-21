@@ -55,7 +55,7 @@
     th{font-size:11.5px;font-weight:500;color:var(--muted);letter-spacing:.02em;white-space:nowrap}
     th.r{text-align:right}
     tr.cur td{background:var(--accent-soft)}
-    tr.soldrow td, tr.soldrow input, tr.soldrow select {color:var(--muted) !important; opacity:0.75;}
+    tr.soldrow td, tr.soldrow input, tr.soldrow select {color:var(--muted) !important; opacity:0.85;}
     tr.soldrow input[type=number] {background:transparent;}
     .bar{height:8px;background:var(--bar-bg);border-radius:4px;overflow:hidden;min-width:90px}
     .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
@@ -178,7 +178,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">미보유 선택 시 해당 종목의 미래 예상 배당금은 0으로 계산됩니다. 말일이 지난 달(✎)의 칸에는 실제 수령액을 입력할 수 있습니다.</p>
+    <p class="foot">미보유 선택 시 해당 종목의 미래 예상 배당금은 0으로 계산됩니다. 말일이 지난 달(✎)의 칸에는 실제 수령액을 자유롭게 입력할 수 있습니다.</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -206,7 +206,6 @@ const firebaseConfig = {
   appId: "1:1046580456353:web:7d5f61391061bc783ab9e0"
 };
 
-// Firebase SDK 초기화
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
@@ -289,12 +288,10 @@ const dbRef = db.ref("dividend_tracker_data");
     return st;
   }
 
-  // 브라우저 로컬 저장소 우선 확인 후 수신 전 초기 상태 바인딩
   var localSaved = localStorage.getItem(KEY);
   var initialData = localSaved ? JSON.parse(localSaved) : {tax:15, rows:JSON.parse(JSON.stringify(INIT))};
   var state = normalize(initialData);
 
-  // Firebase 데이터 저장 함수
   function save(){
     if(isRemoteUpdating) return;
     try {
@@ -303,7 +300,6 @@ const dbRef = db.ref("dividend_tracker_data");
     } catch(e){}
   }
 
-  // Firebase 실시간 데이터 변경 감지 리스너
   dbRef.on('value', function(snapshot){
     var val = snapshot.val();
     if(val && val.rows){
@@ -314,7 +310,6 @@ const dbRef = db.ref("dividend_tracker_data");
       isRemoteUpdating = false;
       $('saveState').textContent = '☁️ 실시간 동기화 완료';
     } else {
-      // 최초 실행 시 기본 데이터 등록
       save();
       $('saveState').textContent = '☁️ 실시간 동기화 완료';
     }
@@ -373,6 +368,8 @@ const dbRef = db.ref("dividend_tracker_data");
 
   function build(){
     var cm=NOW.getMonth();
+
+    // 1. 보유 종목 테이블
     $('holdTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
       if(hideSold && r.sold) return '';
       var name=esc(dvOf(r).name), tk=esc(r.t);
@@ -403,6 +400,7 @@ const dbRef = db.ref("dividend_tracker_data");
       });
     });
 
+    // 2. 월별 배당 매트릭스 테이블
     $('mxTbl').querySelector('thead').innerHTML='<tr><th>종목</th><th style="width:90px">보유 상태</th>'+MONTHS.map(function(m,j){return '<th class="r'+(j===cm?' cm':'')+'">'+m+(PAST[j]?' ✎':'')+'</th>'}).join('')+'<th class="r">연 합계</th></tr>';
     
     $('mxTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
@@ -411,23 +409,37 @@ const dbRef = db.ref("dividend_tracker_data");
       var rowClass = r.sold ? ' class="soldrow"' : '';
       return '<tr'+rowClass+'><td class="tk">'+esc(r.t)+(r.sold?' <span class="chip sold">미보유</span>':'')+'</td><td>'+statusSel+'</td>'+MONTHS.map(function(m,j){
         var c=(j===cm?' cm':'');
-        if(PAST[j]){var v=state.over[i][j]; return '<td class="num'+c+'"><input type="number" id="o'+i+'_'+j+'" min="0" step="0.01" style="width:68px" value="'+(v!=null?v:'')+'"></td>'}
+        if(PAST[j]){
+          var v=state.over[i][j]; 
+          return '<td class="num'+c+'"><input type="number" id="o'+i+'_'+j+'" min="0" step="0.01" style="width:68px" value="'+(v!=null?v:'')+'"></td>';
+        }
         return '<td class="num'+c+'" id="m'+i+'_'+j+'"></td>';
       }).join('')+'<td class="num" id="mt'+i+'"></td></tr>';
     }).join('')+'<tr class="tot"><td>월 합계</td><td></td>'+MONTHS.map(function(m,j){return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'}).join('')+'<td class="num" id="mst"></td></tr>';
 
+    // 매트릭스 테이블 이벤트 바인딩 (보유/미보유 관계없이 모든 행에 등록)
     state.rows.forEach(function(r,i){
       if(hideSold && r.sold) return;
+      
       var msel = $('msel'+i);
       if(msel){
         msel.addEventListener('change', function(e){
           state.rows[i].sold = (e.target.value === 'sold'); save(); build(); update();
         });
       }
+
+      // 과거 달 배당금 직접 입력 이벤트 (미보유 종목도 정상 동작하도록 무조건 등록)
       MONTHS.forEach(function(m,j){
-        if(!PAST[j])return;
+        if(!PAST[j]) return;
         var oInp = $('o'+i+'_'+j);
-        if(oInp) oInp.addEventListener('input',function(e){var v=e.target.value; state.over[i][j]=(v===''?null:(parseFloat(v)||0)); save(); update();});
+        if(oInp){
+          oInp.addEventListener('input', function(e){
+            var v = e.target.value;
+            state.over[i][j] = (v === '' ? null : (parseFloat(v) || 0));
+            save(); 
+            update();
+          });
+        }
       });
     });
 
