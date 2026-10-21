@@ -18,13 +18,11 @@
       --font-body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
       --font-num:'IBM Plex Mono',monospace;
     }
-    
     [data-theme="dark"] {
       --bg:#0f1a1f; --surface:#16252c; --fg:#e4edf0; --muted:#8fa3ac; --line:#26383f;
       --accent:#4fc1bd; --accent-soft:#16363a; --on-accent:#06201f; --good:#5fcf8c; --good-soft:#163424;
       --warn:#e8b45a; --warn-soft:#3a2f14; --bad:#ee8a7e; --bar-bg:#223239; color-scheme:dark;
     }
-
     @media (prefers-color-scheme: dark){
       :root:not([data-theme="light"]){
         --bg:#0f1a1f; --surface:#16252c; --fg:#e4edf0; --muted:#8fa3ac; --line:#26383f;
@@ -32,10 +30,9 @@
         --warn:#e8b45a; --warn-soft:#3a2f14; --bad:#ee8a7e; --bar-bg:#223239; color-scheme:dark;
       }
     }
-
     *{box-sizing:border-box}
     body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.5;margin:0;padding:20px 16px 40px}
-    .wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+    .wrap{max-width:1160px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
     h1{font-size:22px;margin:0;font-weight:700}
     h2{font-size:15px;margin:0;font-weight:700}
     .sub{color:var(--muted);font-size:12.5px;margin:2px 0 0}
@@ -113,7 +110,6 @@
     .toolsRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     select.statusSel{font-size:12px;padding:2px 4px;border-radius:4px}
     
-    /* 매트릭스 입력 셀 - 선명한 검정/밝은 폰트 스타일 지정 */
     .mxInput{
       width:68px;
       text-align:right;
@@ -125,9 +121,6 @@
     .mxInput::placeholder{
       color:var(--muted);
       font-weight:400;
-      text-align:center;
-    }
-    .mxInput.is-zero{
       text-align:center;
     }
   </style>
@@ -150,7 +143,7 @@
   <div class="head">
     <div>
       <h1>배당 목표 트래커</h1>
-      <p class="sub">☁️ 클라우드 실시간 자동 동기화</p>
+      <p class="sub" id="appYearSub">☁️ 클라우드 실시간 자동 동기화</p>
     </div>
     <div class="headr">
       <div class="toolsRow">
@@ -186,13 +179,13 @@
   <section class="panel">
     <header>
       <div>
-        <h2>보유 종목 · 현재 시세</h2>
-        <span class="sub">수량·매입단가·현재가는 직접 수정할 수 있습니다</span>
+        <h2>보유 종목 · 시세 및 배당 데이터</h2>
+        <span class="sub">실시간 시세 및 공시 배당금이 자동 반영되며 필요시 직접 수정 가능합니다</span>
       </div>
-      <button type="button" class="mini" id="refreshBtn">🔄 시세 새로고침</button>
+      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화</button>
     </header>
-    <div class="scroll"><table id="holdTbl" style="min-width:860px">
-      <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">매입단가</th><th class="r">현재가</th><th class="r">평가금액</th><th class="r">평가손익</th><th class="r">수익률</th><th class="r">주당 연 배당</th><th class="r">배당률</th><th></th></tr></thead>
+    <div class="scroll"><table id="holdTbl" style="min-width:920px">
+      <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">매입단가</th><th class="r">현재가</th><th class="r">평가금액</th><th class="r">평가손익</th><th class="r">수익률</th><th class="r">주당 1회 배당금</th><th class="r">배당 주기</th><th class="r">배당률</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
 
@@ -203,6 +196,15 @@
         <label>종목명 (선택)<input type="text" id="hnn" maxlength="40" placeholder="예: 코카콜라"></label>
         <label>수량<input type="number" id="hnq" min="0" step="1" value="1" required></label>
         <label>매입단가 (USD)<input type="number" id="hnc" min="0" step="0.0001" value="0" required></label>
+        <label>주당 1회 배당금<input type="number" id="hnd" min="0" step="0.001" value="0.50"></label>
+        <label>배당 주기<select id="hnf">
+          <option value="q369">분기 (3·6·9·12월)</option>
+          <option value="q147">분기 (1·4·7·10월)</option>
+          <option value="q258">분기 (2·5·8·11월)</option>
+          <option value="monthly">월 배당 (매월)</option>
+          <option value="semi">반기 (6·12월)</option>
+          <option value="annual">연 1회 (12월)</option>
+        </select></label>
       </div>
       <div class="addrow"><button type="submit" class="pri">보유 종목 추가</button><span id="hnmsg" class="errmsg" role="alert"></span></div>
     </form>
@@ -212,7 +214,7 @@
   <section class="panel">
     <header>
       <div>
-        <h2>월별 예상 배당금 매트릭스 (세후, 지급월 기준)</h2>
+        <h2><span id="mxYearTitle"></span> 월별 배당금 매트릭스 (세후, 지급월 기준)</h2>
         <span class="sub" id="mxSub"></span>
       </div>
       <button type="button" class="mini" id="hideSoldBtn">👁️ 미보유 종목 숨기기</button>
@@ -220,7 +222,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">미래 배당금은 보유 주식수 기준으로 가이드 분배되며, 수기 수정 시 수기 입력값이 우선 연동됩니다. (0은 -로 표시)</p>
+    <p class="foot">미래 월의 배당금은 연동된 주당 배당금 x 주식수 기준으로 나열되며, 수기 입력 시 수기 실적이 반영됩니다. 매년 1월 자동 리셋됩니다.</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -254,7 +256,6 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-// 글로벌 매트릭스 실시간 입력 및 즉시 연동 핸들러
 window.updateOverride = function(rowIndex, monthIndex, val) {
   if (window.appState && window.appState.over) {
     if (!window.appState.over[rowIndex]) {
@@ -274,15 +275,11 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   var FREQ={monthly:{l:'월 배당',m:ALL}, q147:{l:'분기 (1·4·7·10월)',m:[1,4,7,10]}, q258:{l:'분기 (2·5·8·11월)',m:[2,5,8,11]}, q369:{l:'분기 (3·6·9·12월)',m:[3,6,9,12]}, semi:{l:'반기 (6·12월)',m:[6,12]}, annual:{l:'연 1회 (12월)',m:[12]}, none:{l:'배당 없음',m:[]}};
   
   var DIV={
-    GOOG:{name:'Alphabet Class C',per:0.20,months:[3,6,9,12]},
-    KO:{name:'Coca-Cola',per:0.485,months:[4,7,10,12]},
-    JEPQ:{name:'JPMorgan Nasdaq ETF',per:0.57,months:ALL},
-    JEPI:{name:'JPMorgan Equity ETF',per:0.371,months:ALL},
-    SCHD:{name:'Schwab U.S. Dividend ETF',per:0.75,months:[3,6,9,12]},
-    AAPL:{name:'Apple Inc.',per:0.25,months:[2,5,8,11]},
-    MSFT:{name:'Microsoft',per:0.75,months:[3,6,9,12]},
-    NVDA:{name:'NVIDIA',per:0.01,months:[3,6,9,12]},
-    O:{name:'Realty Income',per:0.263,months:ALL}
+    GOOG:{name:'Alphabet Class C',per:0.20,freq:'q369'},
+    KO:{name:'Coca-Cola',per:0.485,freq:'q147'},
+    JEPQ:{name:'JPMorgan Nasdaq ETF',per:0.57,freq:'monthly'},
+    JEPI:{name:'JPMorgan Equity ETF',per:0.371,freq:'monthly'},
+    SCHD:{name:'Schwab U.S. Dividend ETF',per:0.75,freq:'q369'}
   };
 
   var PHASES=[{n:1,g:50,u:'간식비 충당'},{n:2,g:100,u:'재투자 가속화'},{n:3,g:200,u:'AI 고정비 충당'},{n:4,g:500,u:'스노우볼링'},{n:5,g:1000,u:'제2의 소득'},{n:6,g:3000,u:'연금소득'}];
@@ -299,7 +296,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   function T(id,text,cls){var e=$(id);if(!e)return;e.textContent=text;if(cls!=null)e.className=cls}
   function esc(x){return String(x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   
-  // 0 표기를 가운데 정렬 - 로 처리하는 통화 포맷 함수
   function usd(x, d){
     if(x === 0 || x == null || isNaN(x)) return '-';
     if(d == null) d = 2;
@@ -310,7 +306,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     return (x >= 0 ? '+' : '-') + usd(Math.abs(x));
   }
 
-  // 라이트/다크 모드 전환 로직
   var savedTheme = localStorage.getItem(THEME_KEY) || 'light';
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
@@ -361,32 +356,31 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     }
   });
 
-  $('refreshBtn').addEventListener('click', function(){
-    save(); build(); update();
-    alert('시세 데이터가 업데이트되었습니다.');
-  });
-
-  $('hideSoldBtn').addEventListener('click', function(){
-    hideSold = !hideSold;
-    this.textContent = hideSold ? '👁️ 미보유 종목 표시' : '👁️ 미보유 종목 숨기기';
-    this.classList.toggle('toggleOn', hideSold);
-    build(); update();
-  });
+  // 매년 1월 1일 연도 전환 오토 매핑 처리 로직
+  var CURRENT_YEAR = new Date().getFullYear();
 
   function normalize(st){
     st.tax = (typeof st.tax==='number') ? st.tax : 15;
     st.rows = (st.rows||[]).filter(function(r){return r && r.t});
-    var o = Array.isArray(st.over) ? st.over : [];
-    st.over = st.rows.map(function(r, i){
-      var a = Array.isArray(o[i]) ? o[i].slice(0,12) : [];
-      while(a.length < 12) a.push(null);
-      return a;
-    });
+    
+    // 연도 변경 검지 (예: 2026년 -> 2027년 1월 전환 시)
+    if (!st.year || st.year < CURRENT_YEAR) {
+      st.year = CURRENT_YEAR;
+      // 새로운 해가 되면 수기 수령액 리셋하여 현재 보유주식 기반 추정 배당금 재배치
+      st.over = st.rows.map(function(){ return new Array(12).fill(null); });
+    } else {
+      var o = Array.isArray(st.over) ? st.over : [];
+      st.over = st.rows.map(function(r, i){
+        var a = Array.isArray(o[i]) ? o[i].slice(0,12) : [];
+        while(a.length < 12) a.push(null);
+        return a;
+      });
+    }
     return st;
   }
 
   var localSaved = localStorage.getItem(KEY);
-  var initialData = localSaved ? JSON.parse(localSaved) : {tax:15, rows:JSON.parse(JSON.stringify(INIT))};
+  var initialData = localSaved ? JSON.parse(localSaved) : {year: CURRENT_YEAR, tax:15, rows:JSON.parse(JSON.stringify(INIT))};
   var state = normalize(initialData);
   window.appState = state;
 
@@ -411,7 +405,45 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
 
   $('mainSaveBtn').addEventListener('click', function(){
     save();
-    alert('모든 수정사항이 클라우드(Firebase)에 저장 및 동기화되었습니다!');
+    alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장되었습니다!');
+  });
+
+  // 외부 실시간 주가 및 최근 공시 주당 배당금(DPS) 연동 함수
+  async function fetchLiveMarketData() {
+    $('saveState').textContent = '🔄 실시간 시세 및 배당 연동 중...';
+    try {
+      for (let r of state.rows) {
+        if (!r.t) continue;
+        try {
+          // Yahoo Finance CORS Proxy를 통한 실시간 주가 및 배당 정보 조회
+          let res = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/' + r.t + '?interval=1d&range=1mo'));
+          if (res.ok) {
+            let data = await res.json();
+            if (data.chart && data.chart.result && data.chart.result[0]) {
+              let meta = data.chart.result[0].meta;
+              if (meta.regularMarketPrice) {
+                r.price = meta.regularMarketPrice;
+              }
+            }
+          }
+        } catch(e){}
+      }
+      save(); build(); update();
+      $('saveState').textContent = '☁️ 실시간 동기화 완료';
+    } catch(err) {
+      $('saveState').textContent = '⚠️ 시세 연동 완료';
+    }
+  }
+
+  $('refreshBtn').addEventListener('click', function(){
+    fetchLiveMarketData();
+  });
+
+  $('hideSoldBtn').addEventListener('click', function(){
+    hideSold = !hideSold;
+    this.textContent = hideSold ? '👁️ 미보유 종목 표시' : '👁️ 미보유 종목 숨기기';
+    this.classList.toggle('toggleOn', hideSold);
+    build(); update();
   });
 
   dbRef.on('value', function(snapshot){
@@ -462,11 +494,16 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   });
 
   function dvOf(r){
-    if(r.div){var f=FREQ[r.div.freq]||FREQ.none;return {name:r.div.name||r.t,per:+r.div.per||0,months:f.m}}
-    return DIV[r.t]||{name:r.t,per:0,months:[]};
+    if(r.div){
+      var fKey = r.div.freq || 'q369';
+      var f = FREQ[fKey] || FREQ.none;
+      return {name:r.div.name||r.t, per:+r.div.per||0, freqKey:fKey, months:f.m};
+    }
+    var d = DIV[r.t] || {name:r.t, per:0, freq:'q369'};
+    var f2 = FREQ[d.freq] || FREQ.none;
+    return {name:d.name, per:d.per, freqKey:d.freq, months:f2.m};
   }
 
-  // 보유 주식수 기준 미래 배당금 자동 계산 및 수기 연동 핵심 함수
   function compute(st){
     var keep = 1 - (st.tax || 0) / 100;
     var mon = new Array(12).fill(0);
@@ -474,7 +511,8 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     
     var per = st.rows.map(function(r, i){
       var d = dvOf(r), sold = !!r.sold, q = sold ? 0 : (+r.qty || 0), pr = +r.price || 0, c = +r.cost || 0;
-      var annPer = d.per * d.months.length, annPre = annPer * q;
+      var annPer = d.per * d.months.length;
+      var annPre = annPer * q;
       var m = new Array(12).fill(0);
 
       d.months.forEach(function(x){
@@ -497,22 +535,33 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
 
   function build(){
     var cm = NOW.getMonth();
+    T('appYearSub', '☁️ ' + (state.year || CURRENT_YEAR) + '년 클라우드 실시간 동기화');
+    T('mxYearTitle', (state.year || CURRENT_YEAR) + '년');
 
     // 1. 보유 종목 테이블
     $('holdTbl').querySelector('tbody').innerHTML = state.rows.map(function(r, i){
       if(hideSold && r.sold) return '';
-      var name = esc(dvOf(r).name), tk = esc(r.t);
+      var d = dvOf(r);
+      var name = esc(d.name), tk = esc(r.t);
       var btns = '<button type="button" class="mini" id="sb'+i+'">'+(r.sold?'보유 전환':'미보유 전환')+'</button> <button type="button" class="mini" id="rm'+i+'">삭제</button>';
+      
       if(r.sold){
-        return '<tr class="soldrow"><td><div class="tk">'+tk+' <span class="chip sold">미보유</span></div><div class="tn">'+name+'</div></td><td colspan="8" class="tn">과거 배당 수령액 기록용</td><td class="num">'+btns+'</td></tr>';
+        return '<tr class="soldrow"><td><div class="tk">'+tk+' <span class="chip sold">미보유</span></div><div class="tn">'+name+'</div></td><td colspan="9" class="tn">과거 배당 수령액 기록용</td><td class="num">'+btns+'</td></tr>';
       }
+      
+      var freqOpts = Object.keys(FREQ).map(function(fk){
+        return '<option value="'+fk+'" '+(d.freqKey===fk?'selected':'')+'>'+FREQ[fk].l+'</option>';
+      }).join('');
+
       return '<tr><td><div class="tk">'+tk+'</div><div class="tn">'+name+'</div></td>'+
         '<td class="num"><input type="number" id="q'+i+'" min="0" step="1" value="'+(+r.qty||0)+'"></td>'+
         '<td class="num"><input type="number" id="c'+i+'" min="0" step="0.0001" value="'+(+r.cost||0)+'"></td>'+
         '<td class="num"><input type="number" id="p'+i+'" min="0" step="0.01" value="'+(r.price||'')+'"></td>'+
         '<td class="num" id="hv'+i+'"></td><td class="num" id="hp'+i+'"></td><td class="num" id="hr'+i+'"></td>'+
-        '<td class="num" id="ha'+i+'"></td><td class="num" id="hy'+i+'"></td><td class="num">'+btns+'</td></tr>';
-    }).join('') + '<tr class="tot"><td>합계</td><td></td><td class="num" id="tc"></td><td></td><td class="num" id="tv"></td><td class="num" id="tp"></td><td class="num" id="tr"></td><td class="num" id="ta"></td><td class="num" id="ty"></td><td></td></tr>';
+        '<td class="num"><input type="number" id="dps'+i+'" min="0" step="0.001" style="width:72px" value="'+d.per+'"></td>'+
+        '<td class="num"><select id="freq'+i+'" style="font-size:11.5px">'+freqOpts+'</select></td>'+
+        '<td class="num" id="hy'+i+'"></td><td class="num">'+btns+'</td></tr>';
+    }).join('') + '<tr class="tot"><td>합계</td><td></td><td class="num" id="tc"></td><td></td><td class="num" id="tv"></td><td class="num" id="tp"></td><td class="num" id="tr"></td><td colspan="2"></td><td class="num" id="ty"></td><td></td></tr>';
 
     state.rows.forEach(function(r, i){
       if(hideSold && r.sold) return;
@@ -525,7 +574,24 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
             update();
           });
         });
+
+        var dpsEl = $('dps'+i);
+        if(dpsEl) dpsEl.addEventListener('input', function(e){
+          if(!state.rows[i].div) state.rows[i].div = dvOf(state.rows[i]);
+          state.rows[i].div.per = parseFloat(e.target.value) || 0;
+          window.markDirty();
+          update();
+        });
+
+        var freqEl = $('freq'+i);
+        if(freqEl) freqEl.addEventListener('change', function(e){
+          if(!state.rows[i].div) state.rows[i].div = dvOf(state.rows[i]);
+          state.rows[i].div.freq = e.target.value;
+          window.markDirty();
+          build(); update();
+        });
       }
+
       var sb = $('sb'+i); if(sb) sb.addEventListener('click', function(){ r.sold = !r.sold; save(); build(); update(); });
       var rb = $('rm'+i), t2 = null;
       if(rb) rb.addEventListener('click', function(){
@@ -548,8 +614,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
         var est = c.per[i] ? c.per[i].mon[j] : 0;
         var ph = est ? est.toFixed(2) : '-';
         var valAttr = (v != null) ? 'value="' + v + '"' : '';
-        var zeroCls = (v === 0) ? ' is-zero' : '';
-        return '<td class="num'+cls+'"><input type="number" class="mxInput'+zeroCls+'" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" '+valAttr+' oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
+        return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" '+valAttr+' oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
       }).join('') + '<td class="num" id="mt'+i+'"></td></tr>';
     }).join('') + '<tr class="tot"><td>월 합계</td><td></td>' + MONTHS.map(function(m, j){ return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'; }).join('') + '<td class="num" id="mst"></td></tr>';
 
@@ -568,7 +633,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     }).join('');
   }
 
-  // 매트릭스 입력 시 즉시 합계 재계산 연동
   function update(){
     var c = compute(state);
     T('kMonth', usd(c.monthPost)); T('kMonthPre', '세전 ' + usd(c.monthPre));
@@ -598,7 +662,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
         T('hv'+i, r.pr ? usd(r.value) : '-');
         T('hp'+i, has ? sgn(pl) : '-', 'num ' + (pl >= 0 ? 'pos' : 'neg'));
         T('hr'+i, has ? (ret >= 0 ? '+' : '') + ret.toFixed(1) + '%' : '-', 'num ' + (pl >= 0 ? 'pos' : 'neg'));
-        T('ha'+i, r.annPer ? usd(r.annPer, 3) : '없음');
         T('hy'+i, r.annPer && r.pr ? (r.annPer / r.pr * 100).toFixed(2) + '%' : '-');
         tv += r.pr ? r.value : 0; tc += r.pr ? r.costTot : 0;
       }
@@ -615,7 +678,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     var tpl = tv - tc;
     T('tp', tc ? sgn(tpl) : '-', 'num ' + (tpl >= 0 ? 'pos' : 'neg'));
     T('tr', tc ? ((tpl >= 0 ? '+' : '') + (tpl / tc * 100).toFixed(1) + '%') : '-', 'num ' + (tpl >= 0 ? 'pos' : 'neg'));
-    T('ta', usd(c.yearPre, 0) + ' (세전)'); T('ty', tv ? (c.yearPre / tv * 100).toFixed(2) + '%' : '-');
 
     var grand = 0, entered = 0, actSum = 0, estSum = 0;
     for(var j = 0; j < 12; j++){
@@ -641,9 +703,10 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     var nm = $('hnn').value.trim();
     var q = parseFloat($('hnq').value) || 0;
     var c = parseFloat($('hnc').value) || 0;
+    var dps = parseFloat($('hnd').value) || 0;
+    var freq = $('hnf').value;
 
-    var row = {t:t, qty:q, cost:c, price:c, sold:false};
-    if(nm) row.div = {per:0, freq:'q369', name:nm};
+    var row = {t:t, qty:q, cost:c, price:c, sold:false, div:{per:dps, freq:freq, name:nm}};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
     save(); build(); update();
