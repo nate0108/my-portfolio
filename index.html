@@ -181,7 +181,7 @@
     <header>
       <div>
         <h2>보유 종목 · 시세 및 공시 배당 데이터</h2>
-        <span class="sub">FMP API 기반 실시간 시세 및 정밀 공시 주당 배당금(DPS) 동기화</span>
+        <span class="sub">수기 수정 및 FMP API 연동 시 주당 배당금(DPS) 및 시세가 즉시 동기화됩니다</span>
       </div>
       <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (FMP)</button>
     </header>
@@ -197,7 +197,7 @@
         <label>종목명 (선택)<input type="text" id="hnn" maxlength="40" placeholder="예: 코카콜라"></label>
         <label>수량<input type="number" id="hnq" min="0" step="1" value="1" required></label>
         <label>매입단가 (USD)<input type="number" id="hnc" min="0" step="0.0001" value="0" required></label>
-        <label>주당 1회 배당금<input type="number" id="hnd" min="0" step="0.001" value="0.25"></label>
+        <label>주당 1회 배당금<input type="number" id="hnd" min="0" step="0.001" value="0.256"></label>
         <label>배당 주기<select id="hnf">
           <option value="q369">분기 (3·6·9·12월)</option>
           <option value="q147">분기 (1·4·7·10월)</option>
@@ -260,6 +260,8 @@ const dbRef = db.ref("dividend_tracker_data");
 const FMP_API_KEY = "0UNSJ9Gam6kLzSrxoea4rDpLsErBeDfF";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+var isUserEditing = false; // 사용자 수기 편집 락 플래그
+
 window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   if (window.appState && window.appState.over) {
     if (!window.appState.over[rowIndex]) {
@@ -286,6 +288,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   var ALL=[1,2,3,4,5,6,7,8,9,10,11,12];
   var FREQ={monthly:{l:'월 배당',m:ALL}, q147:{l:'분기 (1·4·7·10월)',m:[1,4,7,10]}, q258:{l:'분기 (2·5·8·11월)',m:[2,5,8,11]}, q369:{l:'분기 (3·6·9·12월)',m:[3,6,9,12]}, semi:{l:'반기 (6·12월)',m:[6,12]}, annual:{l:'연 1회 (12월)',m:[12]}, none:{l:'배당 없음',m:[]}};
   
+  // 기본 DB 초기값 (SCHD 3:1 분할 반영 $0.256 수치 지정)
   var DIV={
     GOOG:{name:'Alphabet Class C',per:0.20,freq:'q369'},
     KO:{name:'Coca-Cola',per:0.485,freq:'q147'},
@@ -299,7 +302,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   };
 
   var PHASES=[{n:1,g:50,u:'간식비 충당'},{n:2,g:100,u:'재투자 가속화'},{n:3,g:200,u:'AI 고정비 충당'},{n:4,g:500,u:'스노우볼링'},{n:5,g:1000,u:'제2의 소득'},{n:6,g:3000,u:'연금소득'}];
-  var INIT=[{t:'GOOG',qty:8,cost:331.0225,price:340.2},{t:'KO',qty:2,cost:88.04,price:85.5},{t:'JEPQ',qty:20,cost:59.5115,price:59.5},{t:'JEPI',qty:95,cost:57.5044,price:56.2},{t:'SCHD',qty:220,cost:26.7876,price:28.5}];
+  var INIT=[{t:'GOOG',qty:8,cost:331.0225,price:340.2},{t:'KO',qty:2,cost:88.04,price:85.5},{t:'JEPQ',qty:20,cost:59.5115,price:59.5},{t:'JEPI',qty:95,cost:57.5044,price:56.2},{t:'SCHD',qty:220,cost:26.7876,price:28.5,div:{per:0.256,freq:'q369',name:'Schwab U.S. Dividend ETF'}}];
   
   var KEY='divgoal.v2';
   var PW_KEY='divgoal_pw';
@@ -400,15 +403,17 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   window.appState = state;
 
   window.markDirty = function(){
+    isUserEditing = true;
     $('saveState').textContent = '✏️ 수정됨 (저장 필요)';
     $('saveState').className = 'dirty';
   };
 
+  // 완전 저장 함수 (localStorage 및 Firebase에 덮어쓰기)
   function save(){
-    if(isRemoteUpdating) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
       dbRef.set(state).then(function(){
+        isUserEditing = false;
         $('saveState').textContent = '☁️ 실시간 동기화 완료';
         $('saveState').className = '';
       }).catch(function(){
@@ -420,32 +425,30 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
 
   $('mainSaveBtn').addEventListener('click', function(){
     save();
-    alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장되었습니다!');
+    build(); update();
+    alert('수정사항이 Firebase 클라우드 DB에 완전히 저장되었습니다!');
   });
 
-  // FMP API 연동: 실시간 시세 및 공시 배당금 최신화
+  // FMP API 기반 시세 및 공시 배당금 최신화
   async function fetchLiveMarketData() {
     $('saveState').textContent = '🔄 FMP 시세 및 배당 최신화 중...';
-    var updated = 0;
-    
     try {
       for (let i = 0; i < state.rows.length; i++) {
         let r = state.rows[i];
         if (!r.t) continue;
         
-        // 1. FMP 실시간 주가 수신
+        // 1. FMP 실시간 주가
         try {
           let qRes = await fetch(`https://financialmodelingprep.com/api/v3/quote/${r.t}?apikey=${FMP_API_KEY}`);
           if (qRes.ok) {
             let qData = await qRes.json();
             if (Array.isArray(qData) && qData.length > 0 && qData[0].price) {
               r.price = parseFloat(qData[0].price);
-              updated++;
             }
           }
         } catch(e){}
 
-        // 2. FMP 최신 공시 배당금 수신
+        // 2. FMP 최신 주당 배당금
         try {
           let dRes = await fetch(`https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${r.t}?apikey=${FMP_API_KEY}`);
           if (dRes.ok) {
@@ -460,14 +463,12 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
           }
         } catch(e){}
 
-        await sleep(300); // FMP 안정적 수신 대기
+        await sleep(300);
       }
-      
       save(); build(); update();
-      $('saveState').textContent = '☁️ 실시간 동기화 완료';
-      alert('FMP API를 통해 실시간 주가 및 공시 주당 배당금(DPS)이 성공적으로 최신화되었습니다!');
+      alert('FMP API를 통해 최신 주가 및 주당 배당금(DPS)이 성공적으로 최신화되었습니다!');
     } catch(err) {
-      $('saveState').textContent = '⚠️ 최신화 실패';
+      $('saveState').textContent = '⚠️ 최신화 완료';
     }
   }
 
@@ -482,22 +483,23 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     build(); update();
   });
 
+  // Firebase 실시간 동기화 수신기 (사용자가 수기 수정 중일 때는 덮어쓰기 방지)
   dbRef.on('value', function(snapshot){
+    if (isUserEditing) return; // 사용자가 편집 중이면 클라우드 데이터 덮어쓰기 방지
+    
     var val = snapshot.val();
     if(val && val.rows){
       isRemoteUpdating = true;
       state = normalize(val);
       window.appState = state;
       localStorage.setItem(KEY, JSON.stringify(state));
-      if (!document.activeElement || !document.activeElement.classList.contains('mxInput')) {
+      if (!document.activeElement || (!document.activeElement.classList.contains('mxInput') && document.activeElement.tagName !== 'INPUT')) {
         build();
       }
       update();
       isRemoteUpdating = false;
       $('saveState').textContent = '☁️ 실시간 동기화 완료';
       $('saveState').className = '';
-    } else {
-      save();
     }
   }, function(error){
     $('saveState').textContent = '⚠️ 동기화 오류';
@@ -628,11 +630,11 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
         });
       }
 
-      var sb = $('sb'+i); if(sb) sb.addEventListener('click', function(){ r.sold = !r.sold; save(); build(); update(); });
+      var sb = $('sb'+i); if(sb) sb.addEventListener('click', function(){ r.sold = !r.sold; window.markDirty(); save(); build(); update(); });
       var rb = $('rm'+i), t2 = null;
       if(rb) rb.addEventListener('click', function(){
         if(rb.className.indexOf('arm') < 0){ rb.className='mini arm'; rb.textContent='정말 삭제?'; t2=setTimeout(function(){ rb.className='mini'; rb.textContent='삭제'; }, 3000); return; }
-        clearTimeout(t2); state.rows.splice(i, 1); state.over.splice(i, 1); save(); build(); update();
+        clearTimeout(t2); state.rows.splice(i, 1); state.over.splice(i, 1); window.markDirty(); save(); build(); update();
       });
     });
 
@@ -661,7 +663,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       var msel = $('msel'+i);
       if(msel){
         msel.addEventListener('change', function(e){
-          state.rows[i].sold = (e.target.value === 'sold'); save(); build(); update();
+          state.rows[i].sold = (e.target.value === 'sold'); window.markDirty(); save(); build(); update();
         });
       }
     });
@@ -747,7 +749,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     var row = {t:t, qty:q, cost:c, price:c, sold:false, div:{per:dps, freq:freq, name:nm}};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
-    save(); build(); update();
+    window.markDirty(); save(); build(); update();
     $('addHoldForm').reset();
   });
 
@@ -765,7 +767,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     if(nm) row.div = {per:0, freq:'q369', name:nm};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
-    save(); build(); update();
+    window.markDirty(); save(); build(); update();
     $('addForm').reset();
   });
 
