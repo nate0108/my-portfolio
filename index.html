@@ -3,8 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커</title>
+  <title>배당 목표 트래커 (클라우드 실시간 동기화)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+  
+  <!-- Firebase SDK (v9 호환 모듈) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
   <style>
     :root {
       --bg:#f2f5f6; --surface:#ffffff; --fg:#13232b; --muted:#5b6d76; --line:#d9e1e5;
@@ -76,7 +81,7 @@
     .addgrid input,.addgrid select{width:100%;font-family:var(--font-body);text-align:left}
     .addrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     .errmsg{font-size:12.5px;color:var(--bad)}
-    #saveState{font-size:12px;color:var(--muted)}
+    #saveState{font-size:12px;color:var(--good);font-weight:500;}
     #lockOverlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
     .lockCard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
     .lockCard h2{font-size:18px;margin-bottom:8px}
@@ -105,7 +110,7 @@
   <div class="head">
     <div>
       <h1>배당 목표 트래커</h1>
-      <p class="sub">개인 맞춤 대시보드</p>
+      <p class="sub">☁️ 클라우드 실시간 자동 동기화</p>
     </div>
     <div class="headr">
       <div class="toolsRow">
@@ -115,7 +120,7 @@
         <input type="file" id="fileInput" accept=".json" style="display:none">
       </div>
       <div class="ctl" style="margin-top:4px"><label for="tax">원천징수세율</label> <input type="number" id="tax" min="0" max="50" step="0.1" value="15"> %</div>
-      <div id="saveState">이 기기에 안전하게 저장됨</div>
+      <div id="saveState">☁️ 실시간 동기화 완료</div>
     </div>
   </div>
 
@@ -149,7 +154,6 @@
       <tbody></tbody>
     </table></div>
 
-    <!-- 간소화된 보유 종목 입력 폼 -->
     <form class="addbox" id="addHoldForm" autocomplete="off">
       <h2>➕ 신규 보유 종목 추가</h2>
       <div class="addgrid">
@@ -176,7 +180,6 @@
     </table></div>
     <p class="foot">미보유 선택 시 해당 종목의 미래 예상 배당금은 0으로 계산됩니다. 말일이 지난 달(✎)의 칸에는 실제 수령액을 입력할 수 있습니다.</p>
 
-    <!-- 간소화된 매트릭스 행 추가 폼 -->
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
       <div class="addgrid">
@@ -190,6 +193,24 @@
 </div>
 
 <script>
+// -------------------------------------------------------------
+// 1. Firebase 설정 (증연님 실시간 데이터베이스 키 세팅 완료)
+// -------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
+  authDomain: "my-portfolio-nate0108.firebaseapp.com",
+  databaseURL: "https://my-portfolio-nate0108-default-rtdb.firebaseio.com",
+  projectId: "my-portfolio-nate0108",
+  storageBucket: "my-portfolio-nate0108.firebasestorage.app",
+  messagingSenderId: "1046580456353",
+  appId: "1:1046580456353:web:7d5f61391061bc783ab9e0"
+};
+
+// Firebase 초기화
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const dbRef = db.ref("dividend_tracker_data");
+
 (function(){
   var MONTHS=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
   var ALL=[1,2,3,4,5,6,7,8,9,10,11,12];
@@ -202,6 +223,7 @@
   var PW_KEY='divgoal_pw';
   var DEFAULT_PW = '2179';
   var hideSold = false;
+  var isRemoteUpdating = false;
 
   function $(id){return document.getElementById(id)}
   function T(id,text,cls){var e=$(id);if(!e)return;e.textContent=text;if(cls!=null)e.className=cls}
@@ -209,11 +231,7 @@
   function usd(x,d){if(d==null)d=2;return '$'+x.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
   function sgn(x){return (x>=0?'+':'-')+usd(Math.abs(x))}
 
-  var savedPw = localStorage.getItem(PW_KEY);
-  if (!savedPw) {
-    savedPw = DEFAULT_PW;
-    localStorage.setItem(PW_KEY, DEFAULT_PW);
-  }
+  var savedPw = localStorage.getItem(PW_KEY) || DEFAULT_PW;
 
   function checkUnlock() {
     var val = $('passInput').value.trim();
@@ -227,10 +245,7 @@
 
   $('passBtn').addEventListener('click', checkUnlock);
   $('passInput').addEventListener('keypress', function(e){
-    if(e.key === 'Enter') {
-      e.preventDefault();
-      checkUnlock();
-    }
+    if(e.key === 'Enter') { e.preventDefault(); checkUnlock(); }
   });
 
   function unlock(){
@@ -245,7 +260,7 @@
       if(newPw && newPw.trim()){
         localStorage.setItem(PW_KEY, newPw.trim());
         savedPw = newPw.trim();
-        alert('비밀번호가 성공적으로 변경되었습니다.');
+        alert('비밀번호가 변경되었습니다.');
       }
     } else if(oldPw !== null){
       alert('현재 비밀번호가 일치하지 않습니다.');
@@ -259,13 +274,8 @@
 
   $('hideSoldBtn').addEventListener('click', function(){
     hideSold = !hideSold;
-    if(hideSold){
-      this.textContent = '👁️ 미보유 종목 표시';
-      this.classList.add('toggleOn');
-    } else {
-      this.textContent = '👁️ 미보유 종목 숨기기';
-      this.classList.remove('toggleOn');
-    }
+    this.textContent = hideSold ? '👁️ 미보유 종목 표시' : '👁️ 미보유 종목 숨기기';
+    this.classList.toggle('toggleOn', hideSold);
     build(); update();
   });
 
@@ -278,39 +288,52 @@
   }
 
   var state=normalize({tax:15,rows:JSON.parse(JSON.stringify(INIT))});
-  try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(p&&Array.isArray(p.rows)&&p.rows.length)state=normalize(p)}}catch(e){}
+
+  // Firebase 저장 함수
+  function save(){
+    if(isRemoteUpdating) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+      dbRef.set(state); // Firebase에 데이터 전송
+    } catch(e){}
+  }
+
+  // Firebase 실시간 수신 리스너
+  dbRef.on('value', function(snapshot){
+    var val = snapshot.val();
+    if(val && val.rows){
+      isRemoteUpdating = true;
+      state = normalize(val);
+      localStorage.setItem(KEY, JSON.stringify(state));
+      build(); update();
+      isRemoteUpdating = false;
+      $('saveState').textContent = '☁️ 실시간 동기화 완료';
+    }
+  });
 
   var NOW=new Date();
   var PAST=MONTHS.map(function(m,j){return NOW>=new Date(NOW.getFullYear(),j+1,1)});
 
-  function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
-
   $('exportBtn').addEventListener('click', function(){
     var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
     var dlAnchor = document.createElement('a');
-    var dateStr = new Date().toISOString().slice(0,10);
     dlAnchor.setAttribute("href", dataStr);
-    dlAnchor.setAttribute("download", "dividend_tracker_backup_" + dateStr + ".json");
-    document.body.appendChild(dlAnchor);
-    dlAnchor.click();
-    dlAnchor.remove();
+    dlAnchor.setAttribute("download", "dividend_tracker_backup_" + new Date().toISOString().slice(0,10) + ".json");
+    document.body.appendChild(dlAnchor); dlAnchor.click(); dlAnchor.remove();
   });
 
   $('importBtn').addEventListener('click', function(){ $('fileInput').click(); });
-
   $('fileInput').addEventListener('change', function(e){
-    var file = e.target.files[0];
-    if(!file) return;
+    var file = e.target.files[0]; if(!file) return;
     var reader = new FileReader();
     reader.onload = function(evt){
       try{
         var imported = JSON.parse(evt.target.result);
         if(imported && Array.isArray(imported.rows)){
-          state = normalize(imported);
-          save(); build(); update();
-          alert('성공적으로 백업 데이터를 불러왔습니다!');
-        } else { alert('올바르지 않은 백업 파일 형식입니다.'); }
-      } catch(err){ alert('파일 읽기 오류: ' + err.message); }
+          state = normalize(imported); save(); build(); update();
+          alert('백업 데이터를 불러왔습니다.');
+        }
+      } catch(err){ alert('파일 읽기 오류'); }
     };
     reader.readAsText(file);
   });
@@ -328,8 +351,7 @@
       var m=new Array(12).fill(0);
       d.months.forEach(function(x){
         var est = sold ? 0 : d.per*q*keep;
-        m[x-1]=est;
-        mon[x-1]+=est;
+        m[x-1]=est; mon[x-1]+=est;
       });
       pre+=annPre; val+=q*pr; cost+=q*c;
       return {t:r.t,name:d.name,sold:sold,q:q,pr:pr,c:c,value:q*pr,costTot:q*c,annPer:annPer,annPre:annPre,mon:m};
@@ -340,7 +362,6 @@
 
   function build(){
     var cm=NOW.getMonth();
-
     $('holdTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
       if(hideSold && r.sold) return '';
       var name=esc(dvOf(r).name), tk=esc(r.t);
@@ -375,7 +396,7 @@
     
     $('mxTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
       if(hideSold && r.sold) return '';
-      var statusSel = '<select class="statusSel" id="msel'+i+'"><option value="held" '+(r.sold?'':'selected')+'>보유</option><option value="sold" '+(r.sold?'selected':'')+'>미보유</option></select>';
+      var statusSel = '<select class="statusSel" id="msel'+i+'"><option value="held" '+(r.sold?'':'selected')+'>보유</option><option value="sold" '+(r.sold?'selected Ter':r.sold?'selected':'')+'>미보유</option></select>';
       var rowClass = r.sold ? ' class="soldrow"' : '';
       return '<tr'+rowClass+'><td class="tk">'+esc(r.t)+(r.sold?' <span class="chip sold">미보유</span>':'')+'</td><td>'+statusSel+'</td>'+MONTHS.map(function(m,j){
         var c=(j===cm?' cm':'');
@@ -389,8 +410,7 @@
       var msel = $('msel'+i);
       if(msel){
         msel.addEventListener('change', function(e){
-          state.rows[i].sold = (e.target.value === 'sold');
-          save(); build(); update();
+          state.rows[i].sold = (e.target.value === 'sold'); save(); build(); update();
         });
       }
       MONTHS.forEach(function(m,j){
@@ -472,7 +492,6 @@
     T('mxSub',entered?('입력한 실적 '+entered+'칸 · 실적 '+usd(actSum)+' / 같은 칸 예상 '+usd(estSum)):'월 평균 '+usd(c.monthPost));
   }
 
-  // 1. 보유 종목 입력 폼 (티커, 종목명, 수량, 매입단가)
   $('addHoldForm').addEventListener('submit', function(e){
     e.preventDefault();
     var msg=$('hnmsg'); msg.textContent='';
@@ -484,13 +503,7 @@
     var q=parseFloat($('hnq').value)||0;
     var c=parseFloat($('hnc').value)||0;
 
-    var row={
-      t:t,
-      qty:q,
-      cost:c,
-      price:c, // 기본 현재가는 매입단가와 동일하게 적용
-      sold:false
-    };
+    var row={t:t, qty:q, cost:c, price:c, sold:false};
     if(nm) row.div={per:0, freq:'q369', name:nm};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
@@ -498,7 +511,6 @@
     $('addHoldForm').reset();
   });
 
-  // 2. 매트릭스 행 추가 폼 (티커, 종목명, 보유 상태)
   $('addForm').addEventListener('submit', function(e){
     e.preventDefault();
     var msg=$('nmsg'); msg.textContent='';
@@ -509,13 +521,7 @@
     var sold=$('ns').value==='sold';
     var nm=$('nn').value.trim();
 
-    var row={
-      t:t,
-      qty:0,
-      cost:0,
-      price:0,
-      sold:sold
-    };
+    var row={t:t, qty:0, cost:0, price:0, sold:sold};
     if(nm) row.div={per:0, freq:'q369', name:nm};
 
     state.rows.push(row); state.over.push(new Array(12).fill(null));
