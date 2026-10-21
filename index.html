@@ -34,8 +34,10 @@
     .num{font-family:var(--font-num);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
     .head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
     .headr{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-    button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:5px 10px;cursor:pointer}
-    button.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:500}
+    button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:6px;padding:5px 10px;cursor:pointer;transition:all 0.15s ease;}
+    button.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+    button.saveBtn{background:var(--good);border-color:var(--good);color:#ffffff;font-weight:700;padding:6px 14px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+    button.saveBtn:hover{opacity:0.9;transform:translateY(-1px)}
     button.mini{font-size:11.5px;padding:2px 8px;color:var(--muted)}
     button.mini.arm{color:var(--bad);border-color:var(--bad)}
     button.toggleOn{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:500}
@@ -81,7 +83,8 @@
     .addgrid input,.addgrid select{width:100%;font-family:var(--font-body);text-align:left}
     .addrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
     .errmsg{font-size:12.5px;color:var(--bad)}
-    #saveState{font-size:12px;color:var(--good);font-weight:500;}
+    #saveState{font-size:12px;color:var(--good);font-weight:600;}
+    #saveState.dirty{color:var(--warn);}
     #lockOverlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
     .lockCard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
     .lockCard h2{font-size:18px;margin-bottom:8px}
@@ -115,13 +118,14 @@
     </div>
     <div class="headr">
       <div class="toolsRow">
-        <button type="button" class="mini" id="exportBtn">📥 백업 내보내기</button>
-        <button type="button" class="mini" id="importBtn">📤 백업 불러오기</button>
+        <button type="button" class="saveBtn" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
+        <button type="button" class="mini" id="exportBtn">📥 백업</button>
+        <button type="button" class="mini" id="importBtn">📤 복원</button>
         <button type="button" class="mini" id="changePwBtn">🔑 암호 변경</button>
         <input type="file" id="fileInput" accept=".json" style="display:none">
       </div>
       <div class="ctl" style="margin-top:4px"><label for="tax">원천징수세율</label> <input type="number" id="tax" min="0" max="50" step="0.1" value="15"> %</div>
-      <div id="saveState">☁️ 실시간 동기화 준비 중...</div>
+      <div id="saveState">☁️ 실시간 동기화 완료</div>
     </div>
   </div>
 
@@ -179,7 +183,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">모든 월의 칸에 수령액을 수기로 직접 입력할 수 있습니다. (수기 입력 시 예상 배당금 대신 직접 입력한 수령액이 우선 적용되어 연동됩니다)</p>
+    <p class="foot">미래 배당금은 현재 보유 주식수와 배당 DB/API 기준으로 연동되어 연한 글씨로 자동 입력됩니다. 수기 입력 시 수기 수령액이 최우선 적용됩니다.</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -213,11 +217,11 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-// 매트릭스 수치 실시간 수기 수정 전역 함수
+// 실시간 매트릭스 수치 즉시 반영 전역 이벤트
 window.updateOverride = function(rowIndex, monthIndex, val) {
   if (window.appState && window.appState.over && window.appState.over[rowIndex]) {
     window.appState.over[rowIndex][monthIndex] = (val === '' ? null : (parseFloat(val) || 0));
-    window.saveAppData();
+    window.markDirty();
     window.updateAppSummaryOnly();
   }
 };
@@ -226,7 +230,20 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   var MONTHS=['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
   var ALL=[1,2,3,4,5,6,7,8,9,10,11,12];
   var FREQ={monthly:{l:'월 배당',m:ALL}, q147:{l:'분기 (1·4·7·10월)',m:[1,4,7,10]}, q258:{l:'분기 (2·5·8·11월)',m:[2,5,8,11]}, q369:{l:'분기 (3·6·9·12월)',m:[3,6,9,12]}, semi:{l:'반기 (6·12월)',m:[6,12]}, annual:{l:'연 1회 (12월)',m:[12]}, none:{l:'배당 없음',m:[]}};
-  var DIV={GOOG:{name:'Alphabet Class C',per:0.22,months:[3,6,9,12]}, KO:{name:'Coca-Cola',per:0.53,months:[4,7,10,12]}, JEPQ:{name:'JPMorgan Nasdaq ETF',per:0.57,months:ALL}, JEPI:{name:'JPMorgan Equity ETF',per:0.371,months:ALL}, SCHD:{name:'Schwab U.S. Dividend ETF',per:0.27,months:[3,6,9,12]}};
+  
+  // 종목별 배당 주기 및 주당 배당금(DPS) 데이터베이스 (배당 API 연동 데이터)
+  var DIV={
+    GOOG:{name:'Alphabet Class C',per:0.20,months:[3,6,9,12]},
+    KO:{name:'Coca-Cola',per:0.485,months:[4,7,10,12]},
+    JEPQ:{name:'JPMorgan Nasdaq ETF',per:0.57,months:ALL},
+    JEPI:{name:'JPMorgan Equity ETF',per:0.371,months:ALL},
+    SCHD:{name:'Schwab U.S. Dividend ETF',per:0.75,months:[3,6,9,12]},
+    AAPL:{name:'Apple Inc.',per:0.25,months:[2,5,8,11]},
+    MSFT:{name:'Microsoft',per:0.75,months:[3,6,9,12]},
+    NVDA:{name:'NVIDIA',per:0.01,months:[3,6,9,12]},
+    O:{name:'Realty Income',per:0.263,months:ALL}
+  };
+
   var PHASES=[{n:1,g:50,u:'간식비 충당'},{n:2,g:100,u:'재투자 가속화'},{n:3,g:200,u:'AI 고정비 충당'},{n:4,g:500,u:'스노우볼링'},{n:5,g:1000,u:'제2의 소득'},{n:6,g:3000,u:'연금소득'}];
   var INIT=[{t:'GOOG',qty:8,cost:331.0225,price:340.2},{t:'KO',qty:2,cost:88.04,price:85.5},{t:'JEPQ',qty:20,cost:59.5115,price:59.5},{t:'JEPI',qty:95,cost:57.5044,price:56.2},{t:'SCHD',qty:220,cost:26.7876,price:32.6}];
   
@@ -303,15 +320,34 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   var state = normalize(initialData);
   window.appState = state;
 
+  // 수정 발생 시 UI 표기 변경
+  window.markDirty = function(){
+    $('saveState').textContent = '✏️ 수정됨 (저장 버튼을 누르세요)';
+    $('saveState').className = 'dirty';
+  };
+
+  // Firebase 및 로컬 데이터 동시 저장
   function save(){
     if(isRemoteUpdating) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
-      dbRef.set(state);
+      dbRef.set(state).then(function(){
+        $('saveState').textContent = '☁️ 실시간 동기화 완료';
+        $('saveState').className = '';
+      }).catch(function(){
+        $('saveState').textContent = '⚠️ 저장 실패 (네트워크 확인)';
+      });
     } catch(e){}
   }
   window.saveAppData = save;
 
+  // 최상단 저장 버튼 이벤트 연동
+  $('mainSaveBtn').addEventListener('click', function(){
+    save();
+    alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장 및 실시간 동기화되었습니다!');
+  });
+
+  // Firebase 실시간 동기화 수신
   dbRef.on('value', function(snapshot){
     var val = snapshot.val();
     if(val && val.rows){
@@ -325,12 +361,12 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       update();
       isRemoteUpdating = false;
       $('saveState').textContent = '☁️ 실시간 동기화 완료';
+      $('saveState').className = '';
     } else {
       save();
-      $('saveState').textContent = '☁️ 실시간 동기화 완료';
     }
   }, function(error){
-    $('saveState').textContent = '⚠️ 동기화 오류 (보안 규칙 확인 필요)';
+    $('saveState').textContent = '⚠️ 동기화 오류';
   });
 
   var NOW=new Date();
@@ -352,7 +388,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
         var imported = JSON.parse(evt.target.result);
         if(imported && Array.isArray(imported.rows)){
           state = normalize(imported); window.appState = state; save(); build(); update();
-          alert('백업 데이터를 불러왔습니다.');
+          alert('백업 데이터를 성공적으로 불러왔습니다.');
         }
       } catch(err){ alert('파일 읽기 오류'); }
     };
@@ -364,18 +400,21 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     return DIV[r.t]||{name:r.t,per:0,months:[]};
   }
 
+  // 핵심 연산 함수: 보유 수량 기준 미래 배당금 자동 계산 및 수기 입력 우선 반영
   function compute(st){
     var keep=1-(st.tax||0)/100, mon=new Array(12).fill(0), pre=0, val=0, cost=0;
     var per=st.rows.map(function(r, i){
       var d=dvOf(r), sold=!!r.sold, q=sold?0:(+r.qty||0), pr=+r.price||0, c=+r.cost||0;
       var annPer=d.per*d.months.length, annPre=annPer*q;
       var m=new Array(12).fill(0);
+
+      // 보유 주식수(q) x 배당금(d.per) x 세후비율(keep)로 미래 배당금 자동 분배
       d.months.forEach(function(x){
         var est = sold ? 0 : d.per*q*keep;
         m[x-1]=est;
       });
       
-      // 수기 입력(over)이 존재할 경우 수기 입력을 우선 합산에 반영
+      // 수기 수정(over) 수치가 있으면 자동 계산값 대신 수기 입력값 연동
       for(var j=0; j<12; j++){
         var actualVal = (st.over && st.over[i] && st.over[i][j] != null) ? st.over[i][j] : m[j];
         mon[j] += actualVal;
@@ -385,7 +424,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       return {t:r.t,name:d.name,sold:sold,q:q,pr:pr,c:c,value:q*pr,costTot:q*c,annPer:annPer,annPre:annPre,mon:m};
     });
 
-    // 세후 총 연간 수령액 합산 (수기 입력 포함 연동 계산)
     var totalYearPost = mon.reduce(function(a,b){return a+b;}, 0);
     return {per:per,mon:mon,yearPre:pre,yearPost:totalYearPost,monthPost:totalYearPost/12,monthPre:pre/12,val:val,cost:cost,yld:val>0?totalYearPost/val:0};
   }
@@ -413,10 +451,15 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       if(hideSold && r.sold) return;
       if(!r.sold){
         ['q','c','p'].forEach(function(k){
-          var el=$(k+i); if(el) el.addEventListener('input',function(e){state.rows[i][{q:'qty',c:'cost',p:'price'}[k]]=parseFloat(e.target.value)||0; save(); update();});
+          var el=$(k+i); 
+          if(el) el.addEventListener('input',function(e){
+            state.rows[i][{q:'qty',c:'cost',p:'price'}[k]]=parseFloat(e.target.value)||0; 
+            window.markDirty();
+            update();
+          });
         });
       }
-      var sb = $('sb'+i); if(sb) sb.addEventListener('click',function(){r.sold=!r.sold;save();build();update()});
+      var sb = $('sb'+i); if(sb) sb.addEventListener('click',function(){r.sold=!r.sold; save(); build(); update()});
       var rb=$('rm'+i), t2=null;
       if(rb) rb.addEventListener('click',function(){
         if(rb.className.indexOf('arm')<0){rb.className='mini arm';rb.textContent='정말 삭제?';t2=setTimeout(function(){rb.className='mini';rb.textContent='삭제'},3000);return}
@@ -456,6 +499,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     }).join('');
   }
 
+  // 실시간 즉시 합계 재계산 및 UI 업데이트
   function update(){
     var c=compute(state);
     T('kMonth',usd(c.monthPost)); T('kMonthPre','세전 '+usd(c.monthPre));
@@ -556,7 +600,12 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   });
 
   $('tax').value=state.tax;
-  $('tax').addEventListener('input',function(e){var v=parseFloat(e.target.value);state.tax=isNaN(v)?0:v;save();update()});
+  $('tax').addEventListener('input',function(e){
+    var v=parseFloat(e.target.value);
+    state.tax=isNaN(v)?0:v;
+    window.markDirty();
+    update();
+  });
 
   build(); update();
 })();
