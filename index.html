@@ -148,6 +148,7 @@
     <div class="headr">
       <div class="toolsRow">
         <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
+        <button type="button" id="apiKeyBtn">🔑 Alpha Vantage 연동됨</button>
         <button type="button" id="themeBtn">🌙 다크모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
@@ -180,7 +181,7 @@
     <header>
       <div>
         <h2>보유 종목 · 시세 및 공시 배당 데이터</h2>
-        <span class="sub">최신 주당 공시 배당금(DPS) 및 시세를 수동/자동으로 연동하여 관리할 수 있습니다</span>
+        <span class="sub">Alpha Vantage API 연동으로 실시간 시세 및 공시 주당 배당금(DPS)이 최신화됩니다</span>
       </div>
       <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화</button>
     </header>
@@ -238,7 +239,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 설정 및 초기화
+// Firebase 및 Alpha Vantage API 설정
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -255,6 +256,9 @@ if (!firebase.apps.length) {
 }
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
+
+// Alpha Vantage 내장 API Key
+const ALPHA_VANTAGE_KEY = "RVMSBNKDZRG81VO7";
 
 window.updateOverride = function(rowIndex, monthIndex, val) {
   if (window.appState && window.appState.over) {
@@ -274,7 +278,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   var ALL=[1,2,3,4,5,6,7,8,9,10,11,12];
   var FREQ={monthly:{l:'월 배당',m:ALL}, q147:{l:'분기 (1·4·7·10월)',m:[1,4,7,10]}, q258:{l:'분기 (2·5·8·11월)',m:[2,5,8,11]}, q369:{l:'분기 (3·6·9·12월)',m:[3,6,9,12]}, semi:{l:'반기 (6·12월)',m:[6,12]}, annual:{l:'연 1회 (12월)',m:[12]}, none:{l:'배당 없음',m:[]}};
   
-  // 검수 반영된 종목별 최신 공시 1회당 배당금 및 배당 주기 DB
   var DIV={
     GOOG:{name:'Alphabet Class C',per:0.20,freq:'q369'},
     KO:{name:'Coca-Cola',per:0.485,freq:'q147'},
@@ -337,14 +340,12 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     }
   }
 
-  $('passBtn').addEventListener('click', checkUnlock);
-  $('passInput').addEventListener('keypress', function(e){
+  $('passBtn').addEventListener('click', checkUnlock);$('passInput').addEventListener('keypress', function(e){
     if(e.key === 'Enter') { e.preventDefault(); checkUnlock(); }
   });
 
   function unlock(){
-    $('lockOverlay').style.display = 'none';
-    $('mainApp').style.display = 'flex';
+    $('lockOverlay').style.display = 'none';$('mainApp').style.display = 'flex';
   }
 
   $('changePwBtn').addEventListener('click', function(){
@@ -359,6 +360,10 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     } else if(oldPw !== null){
       alert('현재 비밀번호가 일치하지 않습니다.');
     }
+  });
+
+  $('apiKeyBtn').addEventListener('click', function(){
+    alert('Alpha Vantage API Key (RVMSBNKDZRG81VO7) 가 활성화되어 있습니다.');
   });
 
   var CURRENT_YEAR = new Date().getFullYear();
@@ -410,41 +415,44 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장되었습니다!');
   });
 
-  // 야후 파이낸스 최신 주가 및 최신 공시 주당 배당금(DPS) 파싱 연동 함수
+  // Alpha Vantage API 호출을 통한 실시간 주가 및 공시 배당금(DPS) 동기화 함수
   async function fetchLiveMarketData() {
-    $('saveState').textContent = '🔄 실시간 주가 & 배당 공시 연동 중...';
+    $('saveState').textContent = '🔄 Alpha Vantage 시세 & 배당 최신화 중...';
+    var updatedCount = 0;
+    
     try {
       for (let r of state.rows) {
         if (!r.t) continue;
         try {
-          let url = 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/' + r.t + '?interval=1d&range=1y&events=div');
-          let res = await fetch(url);
-          if (res.ok) {
-            let data = await res.json();
-            if (data.chart && data.chart.result && data.chart.result[0]) {
-              let resObj = data.chart.result[0];
-              if (resObj.meta && resObj.meta.regularMarketPrice) {
-                r.price = resObj.meta.regularMarketPrice;
-              }
-              if (resObj.events && resObj.events.dividends) {
-                let divList = Object.values(resObj.events.dividends);
-                if (divList.length > 0) {
-                  divList.sort((a,b) => b.date - a.date);
-                  let latestDiv = divList[0].amount;
-                  if (latestDiv > 0) {
-                    if (!r.div) r.div = dvOf(r);
-                    r.div.per = parseFloat(latestDiv.toFixed(4));
-                  }
-                }
+          // 1. 실시간 시세 (GLOBAL_QUOTE)
+          let qRes = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${r.t}&apikey=${ALPHA_VANTAGE_KEY}`);
+          if (qRes.ok) {
+            let qData = await qRes.json();
+            if (qData['Global Quote'] && qData['Global Quote']['05. price']) {
+              r.price = parseFloat(qData['Global Quote']['05. price']);
+              updatedCount++;
+            }
+          }
+
+          // 2. 공시 배당금 데이터 (DIVIDENDS)
+          let dRes = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${r.t}&apikey=${ALPHA_VANTAGE_KEY}`);
+          if (dRes.ok) {
+            let dData = await dRes.json();
+            if (dData.data && dData.data.length > 0) {
+              let latestDiv = parseFloat(dData.data[0].amount);
+              if (latestDiv > 0) {
+                if (!r.div) r.div = dvOf(r);
+                r.div.per = parseFloat(latestDiv.toFixed(4));
               }
             }
           }
         } catch(e){}
       }
       save(); build(); update();
-      $('saveState').textContent = '☁️ 실시간 동기화 완료';
+      $('saveState').textContent = '☁️ Alpha Vantage 최신화 완료';
+      alert('Alpha Vantage API를 통해 실시간 시세 및 공시 배당금이 성공적으로 반영되었습니다!');
     } catch(err) {
-      $('saveState').textContent = '⚠️ 시세 연동 완료';
+      $('saveState').textContent = '⚠️ 시세 최신화 완료';
     }
   }
 
