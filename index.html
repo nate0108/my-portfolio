@@ -179,7 +179,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">모든 월의 칸에 실제 수령액을 직접 입력할 수 있습니다. (입력 시 예상 배당금 대신 직접 입력한 수령액이 적용됩니다)</p>
+    <p class="foot">모든 월의 칸에 수령액을 수기로 직접 입력할 수 있습니다. (수기 입력 시 예상 배당금 대신 직접 입력한 수령액이 우선 적용되어 연동됩니다)</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -213,9 +213,9 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-// 매트릭스 수치 실시간 입력 핸들러 (전역)
+// 매트릭스 수치 실시간 수기 수정 전역 함수
 window.updateOverride = function(rowIndex, monthIndex, val) {
-  if (window.appState && window.appState.over) {
+  if (window.appState && window.appState.over && window.appState.over[rowIndex]) {
     window.appState.over[rowIndex][monthIndex] = (val === '' ? null : (parseFloat(val) || 0));
     window.saveAppData();
     window.updateAppSummaryOnly();
@@ -319,7 +319,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       state = normalize(val);
       window.appState = state;
       localStorage.setItem(KEY, JSON.stringify(state));
-      // 사용자가 현재 타자 치는 중인 인풋 요소가 없을 때만 전체 재빌드
       if (!document.activeElement || !document.activeElement.classList.contains('mxInput')) {
         build();
       }
@@ -367,19 +366,28 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
 
   function compute(st){
     var keep=1-(st.tax||0)/100, mon=new Array(12).fill(0), pre=0, val=0, cost=0;
-    var per=st.rows.map(function(r){
+    var per=st.rows.map(function(r, i){
       var d=dvOf(r), sold=!!r.sold, q=sold?0:(+r.qty||0), pr=+r.price||0, c=+r.cost||0;
       var annPer=d.per*d.months.length, annPre=annPer*q;
       var m=new Array(12).fill(0);
       d.months.forEach(function(x){
         var est = sold ? 0 : d.per*q*keep;
-        m[x-1]=est; mon[x-1]+=est;
+        m[x-1]=est;
       });
+      
+      // 수기 입력(over)이 존재할 경우 수기 입력을 우선 합산에 반영
+      for(var j=0; j<12; j++){
+        var actualVal = (st.over && st.over[i] && st.over[i][j] != null) ? st.over[i][j] : m[j];
+        mon[j] += actualVal;
+      }
+
       pre+=annPre; val+=q*pr; cost+=q*c;
       return {t:r.t,name:d.name,sold:sold,q:q,pr:pr,c:c,value:q*pr,costTot:q*c,annPer:annPer,annPre:annPre,mon:m};
     });
-    var yearPost=pre*keep;
-    return {per:per,mon:mon,yearPre:pre,yearPost:yearPost,monthPost:yearPost/12,monthPre:pre/12,val:val,cost:cost,yld:val>0?yearPost/val:0};
+
+    // 세후 총 연간 수령액 합산 (수기 입력 포함 연동 계산)
+    var totalYearPost = mon.reduce(function(a,b){return a+b;}, 0);
+    return {per:per,mon:mon,yearPre:pre,yearPost:totalYearPost,monthPost:totalYearPost/12,monthPre:pre/12,val:val,cost:cost,yld:val>0?totalYearPost/val:0};
   }
 
   function build(){
@@ -416,7 +424,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       });
     });
 
-    // 2. 월별 배당 매트릭스 테이블 (모든 12개 월 칸을 수정 가능한 <input>으로 고정)
+    // 2. 월별 배당 매트릭스 테이블
     $('mxTbl').querySelector('thead').innerHTML='<tr><th>종목</th><th style="width:90px">보유 상태</th>'+MONTHS.map(function(m,j){return '<th class="r'+(j===cm?' cm':'')+'">'+m+'</th>'}).join('')+'<th class="r">연 합계</th></tr>';
     
     var c=compute(state);
@@ -426,7 +434,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       var rowClass = r.sold ? ' class="soldrow"' : '';
       return '<tr'+rowClass+'><td class="tk">'+esc(r.t)+(r.sold?' <span class="chip sold">미보유</span>':'')+'</td><td>'+statusSel+'</td>'+MONTHS.map(function(m,j){
         var cls=(j===cm?' cm':'');
-        var v=state.over[i][j];
+        var v=(state.over && state.over[i]) ? state.over[i][j] : null;
         var est = c.per[i] ? c.per[i].mon[j] : 0;
         var ph = est ? est.toFixed(2) : '-';
         return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" value="'+(v!=null?v:'')+'" oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
@@ -483,7 +491,7 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       }
       var tot=0;
       for(var j=0;j<12;j++){
-        var est=r.mon[j], ov=state.over[i][j];
+        var est=r.mon[j], ov=(state.over && state.over[i]) ? state.over[i][j] : null;
         var val = (ov!=null ? ov : est);
         tot += val;
       }
@@ -500,13 +508,13 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
     for(var j=0;j<12;j++){
       var col=0;
       c.per.forEach(function(r,i){
-        var ov=state.over[i][j];
+        var ov=(state.over && state.over[i]) ? state.over[i][j] : null;
         if(ov!=null){col+=ov;entered++;actSum+=ov;estSum+=r.mon[j]}else col+=r.mon[j];
       });
       grand+=col; T('ms'+j,usd(col));
     }
     T('mst',usd(grand));
-    T('mxSub',entered?('입력한 실적 '+entered+'칸 · 실적 '+usd(actSum)+' / 같은 칸 예상 '+usd(estSum)):'월 평균 '+usd(c.monthPost));
+    T('mxSub',entered?('수기 입력 실적 '+entered+'칸 · 실적 '+usd(actSum)+' / 해당 예상 '+usd(estSum)):'월 평균 '+usd(c.monthPost));
   }
   window.updateAppSummaryOnly = update;
 
