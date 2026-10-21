@@ -90,6 +90,7 @@
     .lockCard button{width:100%;padding:10px;font-size:14px}
     .toolsRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
     select.statusSel{font-size:12px;padding:2px 4px;border-radius:4px}
+    .mxInput{width:68px;text-align:right;}
   </style>
 </head>
 <body>
@@ -178,7 +179,7 @@
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">미보유 선택 시 해당 종목의 미래 예상 배당금은 0으로 계산됩니다. 말일이 지난 달(✎)의 칸에는 실제 수령액을 자유롭게 입력할 수 있습니다.</p>
+    <p class="foot">모든 월의 칸에 실제 수령액을 직접 입력할 수 있습니다. (입력 시 예상 배당금 대신 직접 입력한 수령액이 적용됩니다)</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -212,12 +213,12 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-// 글로벌 입력 핸들러 (전역 스코프 바인딩)
+// 매트릭스 수치 실시간 입력 핸들러 (전역)
 window.updateOverride = function(rowIndex, monthIndex, val) {
   if (window.appState && window.appState.over) {
     window.appState.over[rowIndex][monthIndex] = (val === '' ? null : (parseFloat(val) || 0));
     window.saveAppData();
-    window.updateAppSummary();
+    window.updateAppSummaryOnly();
   }
 };
 
@@ -318,7 +319,11 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       state = normalize(val);
       window.appState = state;
       localStorage.setItem(KEY, JSON.stringify(state));
-      build(); update();
+      // 사용자가 현재 타자 치는 중인 인풋 요소가 없을 때만 전체 재빌드
+      if (!document.activeElement || !document.activeElement.classList.contains('mxInput')) {
+        build();
+      }
+      update();
       isRemoteUpdating = false;
       $('saveState').textContent = '☁️ 실시간 동기화 완료';
     } else {
@@ -330,7 +335,6 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
   });
 
   var NOW=new Date();
-  var PAST=MONTHS.map(function(m,j){return NOW>=new Date(NOW.getFullYear(),j+1,1)});
 
   $('exportBtn').addEventListener('click', function(){
     var dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
@@ -412,20 +416,20 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       });
     });
 
-    // 2. 월별 배당 매트릭스 테이블
-    $('mxTbl').querySelector('thead').innerHTML='<tr><th>종목</th><th style="width:90px">보유 상태</th>'+MONTHS.map(function(m,j){return '<th class="r'+(j===cm?' cm':'')+'">'+m+(PAST[j]?' ✎':'')+'</th>'}).join('')+'<th class="r">연 합계</th></tr>';
+    // 2. 월별 배당 매트릭스 테이블 (모든 12개 월 칸을 수정 가능한 <input>으로 고정)
+    $('mxTbl').querySelector('thead').innerHTML='<tr><th>종목</th><th style="width:90px">보유 상태</th>'+MONTHS.map(function(m,j){return '<th class="r'+(j===cm?' cm':'')+'">'+m+'</th>'}).join('')+'<th class="r">연 합계</th></tr>';
     
+    var c=compute(state);
     $('mxTbl').querySelector('tbody').innerHTML=state.rows.map(function(r,i){
       if(hideSold && r.sold) return '';
       var statusSel = '<select class="statusSel" id="msel'+i+'"><option value="held" '+(r.sold?'':'selected')+'>보유</option><option value="sold" '+(r.sold?'selected':'')+'>미보유</option></select>';
       var rowClass = r.sold ? ' class="soldrow"' : '';
       return '<tr'+rowClass+'><td class="tk">'+esc(r.t)+(r.sold?' <span class="chip sold">미보유</span>':'')+'</td><td>'+statusSel+'</td>'+MONTHS.map(function(m,j){
-        var c=(j===cm?' cm':'');
-        if(PAST[j]){
-          var v=state.over[i][j]; 
-          return '<td class="num'+c+'"><input type="number" id="o'+i+'_'+j+'" min="0" step="0.01" style="width:68px" value="'+(v!=null?v:'')+'" oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
-        }
-        return '<td class="num'+c+'" id="m'+i+'_'+j+'"></td>';
+        var cls=(j===cm?' cm':'');
+        var v=state.over[i][j];
+        var est = c.per[i] ? c.per[i].mon[j] : 0;
+        var ph = est ? est.toFixed(2) : '-';
+        return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" value="'+(v!=null?v:'')+'" oninput="window.updateOverride('+i+','+j+',this.value)"></td>';
       }).join('')+'<td class="num" id="mt'+i+'"></td></tr>';
     }).join('')+'<tr class="tot"><td>월 합계</td><td></td>'+MONTHS.map(function(m,j){return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'}).join('')+'<td class="num" id="mst"></td></tr>';
 
@@ -480,14 +484,8 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       var tot=0;
       for(var j=0;j<12;j++){
         var est=r.mon[j], ov=state.over[i][j];
-        if(PAST[j]){
-          var inp=$('o'+i+'_'+j); 
-          if(inp) inp.placeholder=est?est.toFixed(2):'-'; 
-          tot+=(ov!=null?ov:est);
-        } else {
-          T('m'+i+'_'+j, est?usd(est):'-'); 
-          tot+=est;
-        }
+        var val = (ov!=null ? ov : est);
+        tot += val;
       }
       T('mt'+i,tot?usd(tot):'-');
     });
@@ -503,14 +501,14 @@ window.updateOverride = function(rowIndex, monthIndex, val) {
       var col=0;
       c.per.forEach(function(r,i){
         var ov=state.over[i][j];
-        if(PAST[j]&&ov!=null){col+=ov;entered++;actSum+=ov;estSum+=r.mon[j]}else col+=r.mon[j];
+        if(ov!=null){col+=ov;entered++;actSum+=ov;estSum+=r.mon[j]}else col+=r.mon[j];
       });
       grand+=col; T('ms'+j,usd(col));
     }
     T('mst',usd(grand));
     T('mxSub',entered?('입력한 실적 '+entered+'칸 · 실적 '+usd(actSum)+' / 같은 칸 예상 '+usd(estSum)):'월 평균 '+usd(c.monthPost));
   }
-  window.updateAppSummary = update;
+  window.updateAppSummaryOnly = update;
 
   $('addHoldForm').addEventListener('submit', function(e){
     e.preventDefault();
