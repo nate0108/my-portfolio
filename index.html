@@ -148,7 +148,7 @@
     <div class="headr">
       <div class="toolsRow">
         <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
-        <button type="button" id="apiKeyBtn">🔑 Alpha Vantage 연동됨</button>
+        <button type="button" id="apiKeyBtn">🔑 FMP API 연동됨</button>
         <button type="button" id="themeBtn">🌙 다크모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
@@ -181,9 +181,9 @@
     <header>
       <div>
         <h2>보유 종목 · 시세 및 공시 배당 데이터</h2>
-        <span class="sub">실시간 시세 및 공시 주당 배당금(DPS)을 최신화하고 필요시 직접 수정이 가능합니다</span>
+        <span class="sub">FMP API 기반 실시간 시세 및 정밀 공시 주당 배당금(DPS) 동기화</span>
       </div>
-      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화</button>
+      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (FMP)</button>
     </header>
     <div class="scroll"><table id="holdTbl" style="min-width:920px">
       <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">매입단가</th><th class="r">현재가</th><th class="r">평가금액</th><th class="r">평가손익</th><th class="r">수익률</th><th class="r">주당 1회 배당금</th><th class="r">배당 주기</th><th class="r">배당률</th><th></th></tr></thead>
@@ -197,7 +197,7 @@
         <label>종목명 (선택)<input type="text" id="hnn" maxlength="40" placeholder="예: 코카콜라"></label>
         <label>수량<input type="number" id="hnq" min="0" step="1" value="1" required></label>
         <label>매입단가 (USD)<input type="number" id="hnc" min="0" step="0.0001" value="0" required></label>
-        <label>주당 1회 배당금<input type="number" id="hnd" min="0" step="0.001" value="0.50"></label>
+        <label>주당 1회 배당금<input type="number" id="hnd" min="0" step="0.001" value="0.25"></label>
         <label>배당 주기<select id="hnf">
           <option value="q369">분기 (3·6·9·12월)</option>
           <option value="q147">분기 (1·4·7·10월)</option>
@@ -239,7 +239,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 및 Alpha Vantage API 설정
+// Firebase 및 Financial Modeling Prep (FMP) API 설정
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -257,10 +257,9 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-const ALPHA_VANTAGE_KEY = "RVMSBNKDZRG81VO7";
+const FMP_API_KEY = "0UNSJ9Gam6kLzSrxoea4rDpLsErBeDfF";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// 미입력 및 0 입력 시 '-' 자동 처리 핸들러
 window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   if (window.appState && window.appState.over) {
     if (!window.appState.over[rowIndex]) {
@@ -272,7 +271,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     
     if (rawVal === '' || isNaN(numVal) || numVal === 0) {
       window.appState.over[rowIndex][monthIndex] = null;
-      inputEl.value = ''; // 0 또는 빈값 입력 시 인풋 클리어 후 placeholder('-') 적용
+      inputEl.value = '';
     } else {
       window.appState.over[rowIndex][monthIndex] = numVal;
     }
@@ -290,9 +289,9 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   var DIV={
     GOOG:{name:'Alphabet Class C',per:0.20,freq:'q369'},
     KO:{name:'Coca-Cola',per:0.485,freq:'q147'},
-    JEPQ:{name:'JPMorgan Nasdaq ETF',per:0.57,freq:'monthly'},
-    JEPI:{name:'JPMorgan Equity ETF',per:0.371,freq:'monthly'},
-    SCHD:{name:'Schwab U.S. Dividend ETF',per:0.75,freq:'q369'},
+    JEPQ:{name:'JPMorgan Nasdaq ETF',per:0.54,freq:'monthly'},
+    JEPI:{name:'JPMorgan Equity ETF',per:0.36,freq:'monthly'},
+    SCHD:{name:'Schwab U.S. Dividend ETF',per:0.256,freq:'q369'},
     AAPL:{name:'Apple Inc.',per:0.25,freq:'q258'},
     MSFT:{name:'Microsoft',per:0.75,freq:'q369'},
     O:{name:'Realty Income',per:0.263,freq:'monthly'},
@@ -300,7 +299,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   };
 
   var PHASES=[{n:1,g:50,u:'간식비 충당'},{n:2,g:100,u:'재투자 가속화'},{n:3,g:200,u:'AI 고정비 충당'},{n:4,g:500,u:'스노우볼링'},{n:5,g:1000,u:'제2의 소득'},{n:6,g:3000,u:'연금소득'}];
-  var INIT=[{t:'GOOG',qty:8,cost:331.0225,price:340.2},{t:'KO',qty:2,cost:88.04,price:85.5},{t:'JEPQ',qty:20,cost:59.5115,price:59.5},{t:'JEPI',qty:95,cost:57.5044,price:56.2},{t:'SCHD',qty:220,cost:26.7876,price:32.6}];
+  var INIT=[{t:'GOOG',qty:8,cost:331.0225,price:340.2},{t:'KO',qty:2,cost:88.04,price:85.5},{t:'JEPQ',qty:20,cost:59.5115,price:59.5},{t:'JEPI',qty:95,cost:57.5044,price:56.2},{t:'SCHD',qty:220,cost:26.7876,price:28.5}];
   
   var KEY='divgoal.v2';
   var PW_KEY='divgoal_pw';
@@ -372,7 +371,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   });
 
   $('apiKeyBtn').addEventListener('click', function(){
-    alert('Alpha Vantage API Key (RVMSBNKDZRG81VO7) 가 정상 적용되어 있습니다.');
+    alert('FMP API Key (0UNSJ9Gam6kLzSrxoea4rDpLsErBeDfF) 가 연동되었습니다.');
   });
 
   var CURRENT_YEAR = new Date().getFullYear();
@@ -424,28 +423,51 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     alert('모든 수정사항이 클라우드(Firebase)에 성공적으로 저장되었습니다!');
   });
 
+  // FMP API 연동: 실시간 시세 및 공시 배당금 최신화
   async function fetchLiveMarketData() {
-    $('saveState').textContent = '🔄 Alpha Vantage 시세 최신화 중...';
+    $('saveState').textContent = '🔄 FMP 시세 및 배당 최신화 중...';
+    var updated = 0;
+    
     try {
       for (let i = 0; i < state.rows.length; i++) {
         let r = state.rows[i];
         if (!r.t) continue;
+        
+        // 1. FMP 실시간 주가 수신
         try {
-          let qRes = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${r.t}&apikey=${ALPHA_VANTAGE_KEY}`);
+          let qRes = await fetch(`https://financialmodelingprep.com/api/v3/quote/${r.t}?apikey=${FMP_API_KEY}`);
           if (qRes.ok) {
             let qData = await qRes.json();
-            if (qData['Global Quote'] && qData['Global Quote']['05. price']) {
-              r.price = parseFloat(qData['Global Quote']['05. price']);
+            if (Array.isArray(qData) && qData.length > 0 && qData[0].price) {
+              r.price = parseFloat(qData[0].price);
+              updated++;
             }
           }
         } catch(e){}
-        await sleep(1200);
+
+        // 2. FMP 최신 공시 배당금 수신
+        try {
+          let dRes = await fetch(`https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${r.t}?apikey=${FMP_API_KEY}`);
+          if (dRes.ok) {
+            let dData = await dRes.json();
+            if (dData && Array.isArray(dData.historical) && dData.historical.length > 0) {
+              let latestDiv = dData.historical[0].dividend;
+              if (latestDiv && latestDiv > 0) {
+                if (!r.div) r.div = dvOf(r);
+                r.div.per = parseFloat(latestDiv);
+              }
+            }
+          }
+        } catch(e){}
+
+        await sleep(300); // FMP 안정적 수신 대기
       }
+      
       save(); build(); update();
-      $('saveState').textContent = '☁️ 시세 최신화 완료';
-      alert('Alpha Vantage API를 통해 실시간 시세가 최신화되었습니다!');
+      $('saveState').textContent = '☁️ 실시간 동기화 완료';
+      alert('FMP API를 통해 실시간 주가 및 공시 주당 배당금(DPS)이 성공적으로 최신화되었습니다!');
     } catch(err) {
-      $('saveState').textContent = '⚠️ 시세 최신화 완료';
+      $('saveState').textContent = '⚠️ 최신화 실패';
     }
   }
 
@@ -518,7 +540,6 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     return {name:d.name, per:d.per, freqKey:d.freq, months:f2.m};
   }
 
-  // 핵심 수식: 주당 공시 배당금(DPS) x 보유 수량(Qty) x 원천징수 세후 비율
   function compute(st){
     var keep = 1 - (st.tax || 0) / 100;
     var mon = new Array(12).fill(0);
@@ -530,7 +551,6 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       var annPre = annPer * q;
       var m = new Array(12).fill(0);
 
-      // 세후 배당예상금 계산
       d.months.forEach(function(x){
         var est = sold ? 0 : (d.per * q * keep);
         m[x-1] = est;
@@ -629,7 +649,6 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
         var v = (state.over && state.over[i]) ? state.over[i][j] : null;
         var est = c.per[i] ? c.per[i].mon[j] : 0;
         
-        // 미입력/미도래 시 세후 배당예상금 플레이스홀더 표시, 배당 없는 달은 '-' 표시
         var ph = est > 0 ? est.toFixed(2) : '-';
         var valAttr = (v != null && v !== 0) ? 'value="' + v + '"' : '';
         
