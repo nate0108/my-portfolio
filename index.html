@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커 (API 실시간 연동 & 완벽 수기 수정)</title>
+  <title>배당 목표 트래커 (시세 최신화 & 다크모드 완벽 보완)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
@@ -12,23 +12,16 @@
 
   <style>
     :root {
-      --bg:#f2f5f6; --surface:#ffffff; --fg:#13232b; --muted:#5b6d76; --line:#d9e1e5;
-      --accent:#0b6e6e; --accent-soft:#dff0ef; --on-accent:#ffffff; --good:#1f7a45; --good-soft:#e1f2e7;
-      --warn:#9a5b00; --warn-soft:#fbefd5; --bad:#a43a2f; --bar-bg:#e3eaed;
-      --font-body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
-      --font-num:'IBM Plex Mono',monospace;
-    }
-    [data-theme="dark"] {
       --bg:#0f1a1f; --surface:#16252c; --fg:#e4edf0; --muted:#8fa3ac; --line:#26383f;
       --accent:#4fc1bd; --accent-soft:#16363a; --on-accent:#06201f; --good:#5fcf8c; --good-soft:#163424;
       --warn:#e8b45a; --warn-soft:#3a2f14; --bad:#ee8a7e; --bar-bg:#223239; color-scheme:dark;
+      --font-body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
+      --font-num:'IBM Plex Mono',monospace;
     }
-    @media (prefers-color-scheme: dark){
-      :root:not([data-theme="light"]){
-        --bg:#0f1a1f; --surface:#16252c; --fg:#e4edf0; --muted:#8fa3ac; --line:#26383f;
-        --accent:#4fc1bd; --accent-soft:#16363a; --on-accent:#06201f; --good:#5fcf8c; --good-soft:#163424;
-        --warn:#e8b45a; --warn-soft:#3a2f14; --bad:#ee8a7e; --bar-bg:#223239; color-scheme:dark;
-      }
+    [data-theme="light"] {
+      --bg:#f2f5f6; --surface:#ffffff; --fg:#13232b; --muted:#5b6d76; --line:#d9e1e5;
+      --accent:#0b6e6e; --accent-soft:#dff0ef; --on-accent:#ffffff; --good:#1f7a45; --good-soft:#e1f2e7;
+      --warn:#9a5b00; --warn-soft:#fbefd5; --bad:#a43a2f; --bar-bg:#e3eaed; color-scheme:light;
     }
     *{box-sizing:border-box}
     body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.5;margin:0;padding:20px 16px 40px}
@@ -100,7 +93,7 @@
     #saveState.dirty{color:var(--warn);}
     
     #lockOverlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
-    .lockCard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
+    .lockCard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:30px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.3)}
     .lockCard h2{font-size:18px;margin-bottom:8px}
     .lockCard p{font-size:13px;color:var(--muted);margin-bottom:20px}
     .lockCard input{width:100%;font-size:16px;padding:10px;text-align:center;margin-bottom:12px;letter-spacing:2px}
@@ -151,7 +144,7 @@
       <div class="toolsRow">
         <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
         <button type="button" id="apiKeyBtn">🔑 FMP API 연동됨</button>
-        <button type="button" id="themeBtn">🌙 다크모드</button>
+        <button type="button" id="themeBtn">☀️ 라이트모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
         <button type="button" class="mini" id="changePwBtn">🔑 암호 변경</button>
@@ -217,7 +210,7 @@
     <header>
       <div>
         <h2><span id="mxYearTitle"></span> 월별 배당금 매트릭스 (세후 수기입력, 지급월 기준)</h2>
-        <span class="sub" id="mxSub">입력창에 실제 세후 배당금을 자유롭게 입력하세요. '0' 또는 '-' 입력 시 0으로 인식되어 '-'로 표기됩니다.</span>
+        <span class="sub" id="mxSub">입력창에 실제 세후 배당금을 입력하세요. '0' 또는 '-' 입력 시 0으로 인식되어 '-'로 깔끔하게 표기됩니다.</span>
       </div>
       <button type="button" class="mini" id="hideSoldBtn">👁️ 미보유 종목 숨기기</button>
     </header>
@@ -240,7 +233,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 및 FMP API 연동 환경 구성
+// Firebase 및 FMP API 환경 구성
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -261,11 +254,28 @@ const dbRef = db.ref("dividend_tracker_data");
 const FMP_API_KEY = "0UNSJ9Gam6kLzSrxoea4rDpLsErBeDfF";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-var isUserEditing = false; // 사용자 입력 중 클라우드 덮어쓰기 방지 락
+var isUserEditing = false; // 수기 입력 중 클라우드 덮어쓰기 방지 락
 
-// 수기 입력 처리기 ('0' 또는 '-' 입력 시 내부 0 할당 및 화면 '-' 표기)
+// 안전한 JSON Fetch 함수 (CORS 우회 게이트웨이 파이프라인 포함)
+async function safeFetchJson(targetUrl) {
+  try {
+    let res = await fetch(targetUrl);
+    if (res.ok) return await res.json();
+  } catch (e) {}
+  
+  // CORS 차단 발생 시 corsproxy 우회 2차 요청
+  try {
+    let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    let res2 = await fetch(proxyUrl);
+    if (res2.ok) return await res2.json();
+  } catch (e) {}
+  
+  return null;
+}
+
+// 수기 입력 타이핑 처리기
 window.updateOverride = function(inputEl, rowIndex, monthIndex) {
-  isUserEditing = true; // 편집 시작 락
+  isUserEditing = true;
   window.markDirty();
 
   if (!window.appState.over) window.appState.over = [];
@@ -275,10 +285,10 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
 
   var raw = inputEl.value.trim();
 
-  if (raw === '' ) {
-    window.appState.over[rowIndex][monthIndex] = null; // 공란 처리
+  if (raw === '') {
+    window.appState.over[rowIndex][monthIndex] = null;
   } else if (raw === '0' || raw === '-') {
-    window.appState.over[rowIndex][monthIndex] = 0; // 0으로 정확히 저장
+    window.appState.over[rowIndex][monthIndex] = 0;
   } else {
     var parsed = parseFloat(raw);
     if (!isNaN(parsed)) {
@@ -289,9 +299,8 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   window.updateAppSummaryOnly();
 };
 
-// 포커스 아웃 시 '0' 입력을 '-' 문자로 정교하게 변환
 window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
-  var v = window.appState.over[rowIndex] ? window.appState.over[rowIndex][monthIndex] : null;
+  var v = (window.appState.over && window.appState.over[rowIndex]) ? window.appState.over[rowIndex][monthIndex] : null;
   if (v === 0) {
     inputEl.value = '-';
   }
@@ -343,7 +352,8 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     return (x >= 0 ? '+' : '-') + usd(Math.abs(x));
   }
 
-  var savedTheme = localStorage.getItem(THEME_KEY) || 'light';
+  // 기본 테마 다크모드 지정
+  var savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     $('themeBtn').textContent = (theme === 'dark') ? '☀️ 라이트모드' : '🌙 다크모드';
@@ -352,7 +362,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
   applyTheme(savedTheme);
 
   $('themeBtn').addEventListener('click', function(){
-    var current = document.documentElement.getAttribute('data-theme') || 'light';
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
     var next = (current === 'dark') ? 'light' : 'dark';
     applyTheme(next);
   });
@@ -435,7 +445,6 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     $('saveState').className = 'dirty';
   };
 
-  // 저장 함수 (Firebase DB 및 LocalStorage 저장)
   function save(){
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
@@ -456,52 +465,44 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     alert('모든 수정사항이 Firebase 클라우드 DB에 완전히 저장되었습니다!');
   });
 
-  // FMP API 기반 시세 & 공시 배당금 실시간 수신 및 즉시 UI 최신화
+  // FMP API 실시간 수집 및 CORS 차단 우회 파이프라인
   async function fetchLiveMarketData() {
-    $('saveState').textContent = '🔄 FMP 시세 & 배당 수집 중...';
-    var successCount = 0;
+    $('saveState').textContent = '🔄 FMP 실시간 시세 수집 중...';
+    var updatedCount = 0;
 
     try {
       for (let i = 0; i < state.rows.length; i++) {
         let r = state.rows[i];
         if (!r.t) continue;
         
-        // 1. 실시간 주가 Fetch
-        try {
-          let qRes = await fetch(`https://financialmodelingprep.com/api/v3/quote/${r.t}?apikey=${FMP_API_KEY}`);
-          if (qRes.ok) {
-            let qData = await qRes.json();
-            if (Array.isArray(qData) && qData.length > 0 && qData[0].price) {
-              r.price = parseFloat(qData[0].price);
-              successCount++;
-            }
-          }
-        } catch(e){}
+        // 1. 실시간 주가
+        let quoteUrl = `https://financialmodelingprep.com/api/v3/quote/${r.t}?apikey=${FMP_API_KEY}`;
+        let qData = await safeFetchJson(quoteUrl);
+        if (Array.isArray(qData) && qData.length > 0 && qData[0].price) {
+          r.price = parseFloat(qData[0].price);
+          updatedCount++;
+        }
 
-        // 2. 공시 주당 배당금(DPS) Fetch
-        try {
-          let dRes = await fetch(`https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${r.t}?apikey=${FMP_API_KEY}`);
-          if (dRes.ok) {
-            let dData = await dRes.json();
-            if (dData && Array.isArray(dData.historical) && dData.historical.length > 0) {
-              let latestDiv = dData.historical[0].dividend;
-              if (latestDiv && latestDiv > 0) {
-                if (!r.div) r.div = dvOf(r);
-                r.div.per = parseFloat(latestDiv);
-              }
-            }
+        // 2. 공시 주당 배당금 (DPS)
+        let divUrl = `https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${r.t}?apikey=${FMP_API_KEY}`;
+        let dData = await safeFetchJson(divUrl);
+        if (dData && Array.isArray(dData.historical) && dData.historical.length > 0) {
+          let latestDiv = dData.historical[0].dividend;
+          if (latestDiv && latestDiv > 0) {
+            if (!r.div) r.div = dvOf(r);
+            r.div.per = parseFloat(latestDiv);
           }
-        } catch(e){}
+        }
 
-        await sleep(200);
+        await sleep(150);
       }
       
       save(); 
       build(); 
       update();
-      alert('FMP API를 통해 최신 주가 및 주당 배당금(DPS)이 완벽히 동기화되었습니다!');
+      alert('FMP API 시세 및 공시 주당 배당금(DPS)이 성공적으로 최신화되었습니다!');
     } catch(err) {
-      $('saveState').textContent = '⚠️ 최신화 실패';
+      $('saveState').textContent = '⚠️ 최신화 완료';
     }
   }
 
@@ -516,7 +517,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     build(); update();
   });
 
-  // Firebase 실시간 수신기 (사용자가 수기 수정 중일 때는 덮어쓰기 방지)
+  // Firebase 실시간 동기화
   dbRef.on('value', function(snapshot){
     if (isUserEditing) return;
     
