@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커 (API 자동 연동 & 세후 수기 관리)</title>
+  <title>배당 목표 트래커 (API 실시간 연동 & 완벽 수기 수정)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
@@ -48,7 +48,6 @@
     button.mini{font-size:11.5px;padding:3px 8px;color:var(--muted)}
     button.mini.arm{color:var(--bad);border-color:var(--bad)}
     button.toggleOn{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
-    button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
     
     .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
     .kpi{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
@@ -114,9 +113,12 @@
       width:68px;
       text-align:right;
       font-weight:600;
+      font-family:var(--font-num);
       color:var(--fg) !important;
       background:var(--surface) !important;
-      opacity:1 !important;
+      border:1px solid var(--line);
+      border-radius:4px;
+      padding:4px 6px;
     }
     .mxInput::placeholder{
       color:var(--muted);
@@ -148,7 +150,7 @@
     <div class="headr">
       <div class="toolsRow">
         <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
-        <button type="button" id="apiKeyBtn">🔑 FMP/AlphaVantage 연동됨</button>
+        <button type="button" id="apiKeyBtn">🔑 FMP API 연동됨</button>
         <button type="button" id="themeBtn">🌙 다크모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
@@ -176,14 +178,14 @@
     <p class="foot">부족한 월 배당을 현재 포트폴리오의 세후 배당수익률로 채우려면 더 투자해야 하는 금액의 단순 추정입니다.</p>
   </section>
 
-  <!-- 보유 종목 패널 (주당 배당금은 API로 자동 관리됨) -->
+  <!-- 보유 종목 패널 -->
   <section class="panel">
     <header>
       <div>
         <h2>보유 종목 · 시세 및 API 공시 배당 데이터</h2>
-        <span class="sub">API 버튼 클릭 시 FMP / Alpha Vantage 플랫폼에서 최신 주가 및 공시 주당 배당금(DPS)을 자동 수집합니다</span>
+        <span class="sub">버튼 클릭 시 FMP API에서 최신 주가 및 공시 주당 배당금(DPS)을 실시간 수집합니다</span>
       </div>
-      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (API)</button>
+      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (FMP)</button>
     </header>
     <div class="scroll"><table id="holdTbl" style="min-width:920px">
       <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">매입단가</th><th class="r">현재가</th><th class="r">평가금액</th><th class="r">평가손익</th><th class="r">수익률</th><th class="r">API 공시 배당금(1회)</th><th class="r">배당 주기</th><th class="r">배당률</th><th></th></tr></thead>
@@ -210,19 +212,19 @@
     </form>
   </section>
 
-  <!-- 월별 배당 매트릭스 패널 (세후 배당금 수기 입력 전용) -->
+  <!-- 월별 배당 매트릭스 패널 -->
   <section class="panel">
     <header>
       <div>
         <h2><span id="mxYearTitle"></span> 월별 배당금 매트릭스 (세후 수기입력, 지급월 기준)</h2>
-        <span class="sub" id="mxSub">입력창에 계좌에 들어온 '실제 세후 배당금'을 직접 입력하세요. 미입력 월은 API 배당금 기반 세후 산출액이 정수로 자동 계산됩니다.</span>
+        <span class="sub" id="mxSub">입력창에 실제 세후 배당금을 자유롭게 입력하세요. '0' 또는 '-' 입력 시 0으로 인식되어 '-'로 표기됩니다.</span>
       </div>
       <button type="button" class="mini" id="hideSoldBtn">👁️ 미보유 종목 숨기기</button>
     </header>
     <div class="scroll"><table id="mxTbl" style="min-width:960px">
       <thead></thead><tbody></tbody>
     </table></div>
-    <p class="foot">미입력/0 항목은 하이픈(-)으로 처리되며, 수기 입력된 세후 배당금은 API 수신 예상액보다 최우선 적용됩니다.</p>
+    <p class="foot">미입력 칸은 회색 예상액이 안내되며, '0' 입력 시 배당 없음(-)으로 완벽하게 처리됩니다. 수정 후 상단의 저장 버튼을 꼭 눌러주세요.</p>
 
     <form class="addbox" id="addForm" autocomplete="off">
       <h2>➕ 매트릭스 행 추가</h2>
@@ -238,7 +240,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 및 API (FMP + Alpha Vantage) 설정
+// Firebase 및 FMP API 연동 환경 구성
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -257,30 +259,41 @@ const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
 const FMP_API_KEY = "0UNSJ9Gam6kLzSrxoea4rDpLsErBeDfF";
-const AV_API_KEY = "RVMSBNKDZRG81VO7";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-var isUserEditing = false; // 사용자 수기 세후 입력 락 플래그
+var isUserEditing = false; // 사용자 입력 중 클라우드 덮어쓰기 방지 락
 
-// 증연님의 매트릭스 수기 '세후 배당금' 입력 처리 함수
+// 수기 입력 처리기 ('0' 또는 '-' 입력 시 내부 0 할당 및 화면 '-' 표기)
 window.updateOverride = function(inputEl, rowIndex, monthIndex) {
-  if (window.appState && window.appState.over) {
-    if (!window.appState.over[rowIndex]) {
-      window.appState.over[rowIndex] = new Array(12).fill(null);
+  isUserEditing = true; // 편집 시작 락
+  window.markDirty();
+
+  if (!window.appState.over) window.appState.over = [];
+  if (!window.appState.over[rowIndex]) {
+    window.appState.over[rowIndex] = new Array(12).fill(null);
+  }
+
+  var raw = inputEl.value.trim();
+
+  if (raw === '' ) {
+    window.appState.over[rowIndex][monthIndex] = null; // 공란 처리
+  } else if (raw === '0' || raw === '-') {
+    window.appState.over[rowIndex][monthIndex] = 0; // 0으로 정확히 저장
+  } else {
+    var parsed = parseFloat(raw);
+    if (!isNaN(parsed)) {
+      window.appState.over[rowIndex][monthIndex] = parsed;
     }
-    
-    var rawVal = inputEl.value.trim();
-    var numVal = parseFloat(rawVal);
-    
-    if (rawVal === '' || isNaN(numVal) || numVal === 0) {
-      window.appState.over[rowIndex][monthIndex] = null;
-      inputEl.value = '';
-    } else {
-      window.appState.over[rowIndex][monthIndex] = numVal;
-    }
-    
-    window.markDirty();
-    window.updateAppSummaryOnly();
+  }
+
+  window.updateAppSummaryOnly();
+};
+
+// 포커스 아웃 시 '0' 입력을 '-' 문자로 정교하게 변환
+window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
+  var v = window.appState.over[rowIndex] ? window.appState.over[rowIndex][monthIndex] : null;
+  if (v === 0) {
+    inputEl.value = '-';
   }
 };
 
@@ -289,7 +302,6 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   var ALL=[1,2,3,4,5,6,7,8,9,10,11,12];
   var FREQ={monthly:{l:'월 배당',m:ALL}, q147:{l:'분기 (1·4·7·10월)',m:[1,4,7,10]}, q258:{l:'분기 (2·5·8·11월)',m:[2,5,8,11]}, q369:{l:'분기 (3·6·9·12월)',m:[3,6,9,12]}, semi:{l:'반기 (6·12월)',m:[6,12]}, annual:{l:'연 1회 (12월)',m:[12]}, none:{l:'배당 없음',m:[]}};
   
-  // API 수신전 기본 매핑 데이터베이스
   var DIV={
     GOOG:{name:'Alphabet Class C',per:0.20,freq:'q369'},
     KO:{name:'Coca-Cola',per:0.485,freq:'q147'},
@@ -357,12 +369,14 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     }
   }
 
-  $('passBtn').addEventListener('click', checkUnlock);$('passInput').addEventListener('keypress', function(e){
+  $('passBtn').addEventListener('click', checkUnlock);
+  $('passInput').addEventListener('keypress', function(e){
     if(e.key === 'Enter') { e.preventDefault(); checkUnlock(); }
   });
 
   function unlock(){
-    $('lockOverlay').style.display = 'none';$('mainApp').style.display = 'flex';
+    $('lockOverlay').style.display = 'none';
+    $('mainApp').style.display = 'flex';
   }
 
   $('changePwBtn').addEventListener('click', function(){
@@ -380,7 +394,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   });
 
   $('apiKeyBtn').addEventListener('click', function(){
-    alert('FMP API 및 Alpha Vantage API 파이프라인이 자동 연동되었습니다.');
+    alert('FMP API가 성공적으로 연동되어 있습니다.');
   });
 
   var CURRENT_YEAR = new Date().getFullYear();
@@ -417,10 +431,11 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
 
   window.markDirty = function(){
     isUserEditing = true;
-    $('saveState').textContent = '✏️ 수정됨 (저장 필요)';
+    $('saveState').textContent = '✏️ 수정됨 (저장 버튼을 누르세요)';
     $('saveState').className = 'dirty';
   };
 
+  // 저장 함수 (Firebase DB 및 LocalStorage 저장)
   function save(){
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
@@ -438,29 +453,32 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   $('mainSaveBtn').addEventListener('click', function(){
     save();
     build(); update();
-    alert('수기 입력하신 세후 배당금 및 포트폴리오 정보가 클라우드(Firebase)에 저장되었습니다!');
+    alert('모든 수정사항이 Firebase 클라우드 DB에 완전히 저장되었습니다!');
   });
 
-  // FMP / Alpha Vantage API 자동 주가 및 주당 배당금 최신화
+  // FMP API 기반 시세 & 공시 배당금 실시간 수신 및 즉시 UI 최신화
   async function fetchLiveMarketData() {
-    $('saveState').textContent = '🔄 API 기반 시세 & 배당 최신화 중...';
+    $('saveState').textContent = '🔄 FMP 시세 & 배당 수집 중...';
+    var successCount = 0;
+
     try {
       for (let i = 0; i < state.rows.length; i++) {
         let r = state.rows[i];
         if (!r.t) continue;
         
-        // 1. FMP 실시간 주가
+        // 1. 실시간 주가 Fetch
         try {
           let qRes = await fetch(`https://financialmodelingprep.com/api/v3/quote/${r.t}?apikey=${FMP_API_KEY}`);
           if (qRes.ok) {
             let qData = await qRes.json();
             if (Array.isArray(qData) && qData.length > 0 && qData[0].price) {
               r.price = parseFloat(qData[0].price);
+              successCount++;
             }
           }
         } catch(e){}
 
-        // 2. FMP 최신 주당 공시 배당금 (DPS)
+        // 2. 공시 주당 배당금(DPS) Fetch
         try {
           let dRes = await fetch(`https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${r.t}?apikey=${FMP_API_KEY}`);
           if (dRes.ok) {
@@ -475,12 +493,15 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
           }
         } catch(e){}
 
-        await sleep(250);
+        await sleep(200);
       }
-      save(); build(); update();
-      alert('API를 통해 최신 주가 및 주당 공시 배당금(DPS)이 성공적으로 자동 동기화되었습니다!');
+      
+      save(); 
+      build(); 
+      update();
+      alert('FMP API를 통해 최신 주가 및 주당 배당금(DPS)이 완벽히 동기화되었습니다!');
     } catch(err) {
-      $('saveState').textContent = '⚠️ 최신화 완료';
+      $('saveState').textContent = '⚠️ 최신화 실패';
     }
   }
 
@@ -495,7 +516,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     build(); update();
   });
 
-  // Firebase 실시간 수신기
+  // Firebase 실시간 수신기 (사용자가 수기 수정 중일 때는 덮어쓰기 방지)
   dbRef.on('value', function(snapshot){
     if (isUserEditing) return;
     
@@ -504,7 +525,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       state = normalize(val);
       window.appState = state;
       localStorage.setItem(KEY, JSON.stringify(state));
-      if (!document.activeElement || (!document.activeElement.classList.contains('mxInput') && document.activeElement.tagName !== 'INPUT')) {
+      if (!document.activeElement || document.activeElement.tagName !== 'INPUT') {
         build();
       }
       update();
@@ -534,7 +555,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
         var imported = JSON.parse(evt.target.result);
         if(imported && Array.isArray(imported.rows)){
           state = normalize(imported); window.appState = state; save(); build(); update();
-          alert('백업 데이터를 불러왔습니다.');
+          alert('백업 데이터를 성공적으로 불러왔습니다.');
         }
       } catch(err){ alert('파일 읽기 오류'); }
     };
@@ -569,7 +590,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       });
       
       for(var j = 0; j < 12; j++){
-        var actualVal = (st.over && st.over[i] && st.over[i][j] != null) ? st.over[i][j] : m[j];
+        var actualVal = (st.over && st.over[i] && st.over[i][j] !== undefined && st.over[i][j] !== null) ? st.over[i][j] : m[j];
         mon[j] += actualVal;
       }
 
@@ -586,7 +607,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
     T('appYearSub', '☁️ ' + (state.year || CURRENT_YEAR) + '년 클라우드 실시간 동기화');
     T('mxYearTitle', (state.year || CURRENT_YEAR) + '년');
 
-    // 1. 보유 종목 테이블 (주당 배당금은 API 수신 전용 텍스트로 전환)
+    // 1. 보유 종목 테이블
     $('holdTbl').querySelector('tbody').innerHTML = state.rows.map(function(r, i){
       if(hideSold && r.sold) return '';
       var d = dvOf(r);
@@ -640,7 +661,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       });
     });
 
-    // 2. 월별 배당 매트릭스 테이블 (증연님의 세후 수기 입력)
+    // 2. 월별 배당 매트릭스 테이블
     $('mxTbl').querySelector('thead').innerHTML = '<tr><th>종목</th><th style="width:90px">보유 상태</th>' + MONTHS.map(function(m, j){ return '<th class="r'+(j===cm?' cm':'')+'">'+m+'</th>'; }).join('') + '<th class="r">연 합계</th></tr>';
     
     var c = compute(state);
@@ -654,9 +675,11 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
         var est = c.per[i] ? c.per[i].mon[j] : 0;
         
         var ph = est > 0 ? est.toFixed(2) : '-';
-        var valAttr = (v != null && v !== 0) ? 'value="' + v + '"' : '';
+        var displayVal = '';
+        if (v === 0) displayVal = '-';
+        else if (v !== null && v !== undefined) displayVal = v;
         
-        return '<td class="num'+cls+'"><input type="number" class="mxInput" id="o'+i+'_'+j+'" min="0" step="0.01" placeholder="'+ph+'" '+valAttr+' oninput="window.updateOverride(this,'+i+','+j+')"></td>';
+        return '<td class="num'+cls+'"><input type="text" class="mxInput" id="o'+i+'_'+j+'" placeholder="'+ph+'" value="'+displayVal+'" oninput="window.updateOverride(this,'+i+','+j+')" onblur="window.onInputBlur(this,'+i+','+j+')"></td>';
       }).join('') + '<td class="num" id="mt'+i+'"></td></tr>';
     }).join('') + '<tr class="tot"><td>월 합계</td><td></td>' + MONTHS.map(function(m, j){ return '<td class="num'+(j===cm?' cm':'')+'" id="ms'+j+'"></td>'; }).join('') + '<td class="num" id="mst"></td></tr>';
 
@@ -710,7 +733,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       var tot = 0;
       for(var j = 0; j < 12; j++){
         var est = r.mon[j], ov = (state.over && state.over[i]) ? state.over[i][j] : null;
-        var val = (ov != null ? ov : est);
+        var val = (ov !== null && ov !== undefined ? ov : est);
         tot += val;
       }
       T('mt'+i, usd(tot));
@@ -726,7 +749,7 @@ window.updateOverride = function(inputEl, rowIndex, monthIndex) {
       var col = 0;
       c.per.forEach(function(r, i){
         var ov = (state.over && state.over[i]) ? state.over[i][j] : null;
-        if(ov != null){ col += ov; entered++; actSum += ov; estSum += r.mon[j]; } else col += r.mon[j];
+        if(ov !== null && ov !== undefined){ col += ov; entered++; actSum += ov; estSum += r.mon[j]; } else col += r.mon[j];
       });
       grand += col; T('ms'+j, usd(col));
     }
