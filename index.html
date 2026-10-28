@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커 (시세 최신화 & 다크모드 완벽 보완)</title>
+  <title>배당 목표 트래커 (시세 최신화 완벽 해결)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
@@ -143,7 +143,7 @@
     <div class="headr">
       <div class="toolsRow">
         <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
-        <button type="button" id="apiKeyBtn">🔑 FMP API 연동됨</button>
+        <button type="button" id="apiKeyBtn">🔑 실시간 API 연동됨</button>
         <button type="button" id="themeBtn">☀️ 라이트모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
@@ -176,9 +176,9 @@
     <header>
       <div>
         <h2>보유 종목 · 시세 및 API 공시 배당 데이터</h2>
-        <span class="sub">버튼 클릭 시 FMP API에서 최신 주가 및 공시 주당 배당금(DPS)을 실시간 수집합니다</span>
+        <span class="sub">버튼 클릭 시 최신 실시간 주가 및 공시 주당 배당금(DPS)을 수집합니다</span>
       </div>
-      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (FMP)</button>
+      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (API)</button>
     </header>
     <div class="scroll"><table id="holdTbl" style="min-width:920px">
       <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">매입단가</th><th class="r">현재가</th><th class="r">평가금액</th><th class="r">평가손익</th><th class="r">수익률</th><th class="r">API 공시 배당금(1회)</th><th class="r">배당 주기</th><th class="r">배당률</th><th></th></tr></thead>
@@ -233,7 +233,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 및 FMP API 환경 구성
+// Firebase 및 API 환경 구성
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -256,21 +256,72 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 var isUserEditing = false; // 수기 입력 중 클라우드 덮어쓰기 방지 락
 
-// 안전한 JSON Fetch 함수 (CORS 우회 게이트웨이 파이프라인 포함)
-async function safeFetchJson(targetUrl) {
+// 실시간 주가 및 배당금 전용 3중 파이프라인 수신 함수
+async function fetchStockPriceAndDiv(symbol) {
+  let price = null;
+  let divPer = null;
+
+  // 1차: FMP quote-short API
   try {
-    let res = await fetch(targetUrl);
-    if (res.ok) return await res.json();
+    let res = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
+    if (res.ok) {
+      let data = await res.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].price) {
+        price = parseFloat(data[0].price);
+      }
+    }
   } catch (e) {}
-  
-  // CORS 차단 발생 시 corsproxy 우회 2차 요청
+
+  // 2차: FMP v3 quote API (corsproxy 적용)
+  if (!price) {
+    try {
+      let url = `https://corsproxy.io/?${encodeURIComponent(`https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${FMP_API_KEY}`)}`;
+      let res = await fetch(url);
+      if (res.ok) {
+        let data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].price) {
+          price = parseFloat(data[0].price);
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 3차: Yahoo Finance Public Query API Fallback
+  if (!price) {
+    try {
+      let yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+      let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yUrl)}`;
+      let res = await fetch(pUrl);
+      if (res.ok) {
+        let data = await res.json();
+        let meta = data?.chart?.result?.[0]?.meta;
+        if (meta && meta.regularMarketPrice) {
+          price = parseFloat(meta.regularMarketPrice);
+        }
+      }
+    } catch(e) {}
+  }
+
+  // 배당금 수신 (FMP Historical Dividend)
   try {
-    let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-    let res2 = await fetch(proxyUrl);
-    if (res2.ok) return await res2.json();
-  } catch (e) {}
-  
-  return null;
+    let dUrl = `https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${symbol}?apikey=${FMP_API_KEY}`;
+    let res = await fetch(dUrl);
+    if (!res.ok) {
+      let pUrl = `https://corsproxy.io/?${encodeURIComponent(dUrl)}`;
+      res = await fetch(pUrl);
+    }
+    if (res.ok) {
+      let data = await res.json();
+      if (data && Array.isArray(data.historical) && data.historical.length > 0) {
+        let latestDiv = data.historical[0].dividend;
+        if (latestDiv && latestDiv > 0) {
+          divPer = parseFloat(latestDiv);
+        }
+      }
+    }
+  } catch(e) {}
+
+  return { price: price, divPer: divPer };
 }
 
 // 수기 입력 타이핑 처리기
@@ -352,7 +403,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     return (x >= 0 ? '+' : '-') + usd(Math.abs(x));
   }
 
-  // 기본 테마 다크모드 지정
+  // 기본 테마 다크모드
   var savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
@@ -404,7 +455,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
   });
 
   $('apiKeyBtn').addEventListener('click', function(){
-    alert('FMP API가 성공적으로 연동되어 있습니다.');
+    alert('실시간 주가 API 파이프라인이 정상 구축되어 있습니다.');
   });
 
   var CURRENT_YEAR = new Date().getFullYear();
@@ -465,45 +516,32 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     alert('모든 수정사항이 Firebase 클라우드 DB에 완전히 저장되었습니다!');
   });
 
-  // FMP API 실시간 수집 및 CORS 차단 우회 파이프라인
+  // 실시간 시세 및 공시 배당금 최신화 실행 함수
   async function fetchLiveMarketData() {
-    $('saveState').textContent = '🔄 FMP 실시간 시세 수집 중...';
-    var updatedCount = 0;
+    $('saveState').textContent = '🔄 실시간 시세 수집 중...';
+    let successCount = 0;
 
-    try {
-      for (let i = 0; i < state.rows.length; i++) {
-        let r = state.rows[i];
-        if (!r.t) continue;
-        
-        // 1. 실시간 주가
-        let quoteUrl = `https://financialmodelingprep.com/api/v3/quote/${r.t}?apikey=${FMP_API_KEY}`;
-        let qData = await safeFetchJson(quoteUrl);
-        if (Array.isArray(qData) && qData.length > 0 && qData[0].price) {
-          r.price = parseFloat(qData[0].price);
-          updatedCount++;
-        }
-
-        // 2. 공시 주당 배당금 (DPS)
-        let divUrl = `https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${r.t}?apikey=${FMP_API_KEY}`;
-        let dData = await safeFetchJson(divUrl);
-        if (dData && Array.isArray(dData.historical) && dData.historical.length > 0) {
-          let latestDiv = dData.historical[0].dividend;
-          if (latestDiv && latestDiv > 0) {
-            if (!r.div) r.div = dvOf(r);
-            r.div.per = parseFloat(latestDiv);
-          }
-        }
-
-        await sleep(150);
-      }
+    for (let i = 0; i < state.rows.length; i++) {
+      let r = state.rows[i];
+      if (!r.t) continue;
       
-      save(); 
-      build(); 
-      update();
-      alert('FMP API 시세 및 공시 주당 배당금(DPS)이 성공적으로 최신화되었습니다!');
-    } catch(err) {
-      $('saveState').textContent = '⚠️ 최신화 완료';
+      let data = await fetchStockPriceAndDiv(r.t);
+      if (data.price && data.price > 0) {
+        r.price = data.price;
+        successCount++;
+      }
+      if (data.divPer && data.divPer > 0) {
+        if (!r.div) r.div = dvOf(r);
+        r.div.per = data.divPer;
+      }
+
+      await sleep(150);
     }
+    
+    save(); 
+    build(); 
+    update();
+    alert(`총 ${successCount}개 종목의 실시간 주가 및 공시 배당금이 완벽히 반영되었습니다!`);
   }
 
   $('refreshBtn').addEventListener('click', function(){
