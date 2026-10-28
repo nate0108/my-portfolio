@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커 (시세 최신화 검증 및 완벽 수정)</title>
+  <title>배당 목표 트래커 (시세 최신화 & 수기 관리 완벽 보완)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
@@ -176,7 +176,7 @@
     <header>
       <div>
         <h2>보유 종목 · 시세 및 API 공시 배당 데이터</h2>
-        <span class="sub">버튼 클릭 시 최신 실시간 주가 및 공시 주당 배당금(DPS)을 수집합니다</span>
+        <span class="sub">버튼 클릭 시 최신 실시간 주가를 수집하거나, 현재가 칸에 수기로 자유롭게 수정이 가능합니다.</span>
       </div>
       <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (API)</button>
     </header>
@@ -256,12 +256,12 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 var isUserEditing = false; // 수기 입력 중 클라우드 덮어쓰기 방지 락
 
-// 실시간 시세 & 배당 수신 (Stooq + Yahoo + FMP 4중 파이프라인)
+// 실시간 시세 & 배당 수신
 async function fetchStockPriceAndDiv(symbol) {
   let price = null;
   let divPer = null;
 
-  // 1차: Stooq.com API (CORS 무관, 가장 안정적)
+  // 1차: Stooq.com API
   try {
     let res = await fetch(`https://stooq.com/q/l/?s=${symbol}.us&f=sdgl1ovn&e=json`);
     if (res.ok) {
@@ -273,19 +273,7 @@ async function fetchStockPriceAndDiv(symbol) {
     }
   } catch (e) {}
 
-  // 2차: Yahoo Finance Direct Chart API
-  if (!price) {
-    try {
-      let res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`);
-      if (res.ok) {
-        let data = await res.json();
-        let p = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (p && !isNaN(p) && p > 0) price = parseFloat(p);
-      }
-    } catch (e) {}
-  }
-
-  // 3차: FMP quote-short API Direct
+  // 2차: FMP quote-short API Direct
   if (!price) {
     try {
       let res = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
@@ -297,20 +285,6 @@ async function fetchStockPriceAndDiv(symbol) {
         }
       }
     } catch (e) {}
-  }
-
-  // 4차: AllOrigins Proxy Fallback
-  if (!price) {
-    try {
-      let yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-      let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yUrl)}`;
-      let res = await fetch(pUrl);
-      if (res.ok) {
-        let data = await res.json();
-        let p = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (p && !isNaN(p) && p > 0) price = parseFloat(p);
-      }
-    } catch(e) {}
   }
 
   // 공시 주당 배당금 (FMP API)
