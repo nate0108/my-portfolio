@@ -233,7 +233,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 및 API 환경 구성
+// Firebase 및 실시간 시세 API 환경 구성
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -256,72 +256,65 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 var isUserEditing = false; // 수기 입력 중 클라우드 덮어쓰기 방지 락
 
-// 실시간 주가 및 배당금 전용 3중 파이프라인 수신 함수
-async function fetchStockPriceAndDiv(symbol) {
-  let price = null;
-  let divPer = null;
-
-  // 1차: FMP quote-short API
+// 실시간 주가 수신 (다중 API 백업 채널 포함 3중 파이프라인)
+async function fetchSingleStockPrice(symbol) {
+  // 1차 시도: FMP Direct
   try {
     let res = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
     if (res.ok) {
       let data = await res.json();
       if (Array.isArray(data) && data.length > 0 && data[0].price) {
-        price = parseFloat(data[0].price);
+        return parseFloat(data[0].price);
       }
     }
   } catch (e) {}
 
-  // 2차: FMP v3 quote API (corsproxy 적용)
-  if (!price) {
-    try {
-      let url = `https://corsproxy.io/?${encodeURIComponent(`https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${FMP_API_KEY}`)}`;
-      let res = await fetch(url);
-      if (res.ok) {
-        let data = await res.json();
-        if (Array.isArray(data) && data.length > 0 && data[0].price) {
-          price = parseFloat(data[0].price);
-        }
-      }
-    } catch(e) {}
-  }
+  // 2차 시도: Yahoo Finance API (AllOrigins Proxy)
+  try {
+    let yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yUrl)}`;
+    let res = await fetch(pUrl);
+    if (res.ok) {
+      let data = await res.json();
+      let price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      if (price && !isNaN(price)) return parseFloat(price);
+    }
+  } catch (e) {}
 
-  // 3차: Yahoo Finance Public Query API Fallback
-  if (!price) {
-    try {
-      let yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-      let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yUrl)}`;
-      let res = await fetch(pUrl);
-      if (res.ok) {
-        let data = await res.json();
-        let meta = data?.chart?.result?.[0]?.meta;
-        if (meta && meta.regularMarketPrice) {
-          price = parseFloat(meta.regularMarketPrice);
-        }
+  // 3차 시도: FMP Corsproxy Fallback
+  try {
+    let fUrl = `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${FMP_API_KEY}`;
+    let pUrl = `https://corsproxy.io/?${encodeURIComponent(fUrl)}`;
+    let res = await fetch(pUrl);
+    if (res.ok) {
+      let data = await res.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].price) {
+        return parseFloat(data[0].price);
       }
-    } catch(e) {}
-  }
+    }
+  } catch(e) {}
 
-  // 배당금 수신 (FMP Historical Dividend)
+  return null;
+}
+
+// 공시 주당 배당금 (DPS) 수신
+async function fetchSingleStockDiv(symbol) {
   try {
     let dUrl = `https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${symbol}?apikey=${FMP_API_KEY}`;
     let res = await fetch(dUrl);
     if (!res.ok) {
-      let pUrl = `https://corsproxy.io/?${encodeURIComponent(dUrl)}`;
+      let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(dUrl)}`;
       res = await fetch(pUrl);
     }
     if (res.ok) {
       let data = await res.json();
       if (data && Array.isArray(data.historical) && data.historical.length > 0) {
         let latestDiv = data.historical[0].dividend;
-        if (latestDiv && latestDiv > 0) {
-          divPer = parseFloat(latestDiv);
-        }
+        if (latestDiv && latestDiv > 0) return parseFloat(latestDiv);
       }
     }
   } catch(e) {}
-
-  return { price: price, divPer: divPer };
+  return null;
 }
 
 // 수기 입력 타이핑 처리기
@@ -525,17 +518,19 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
       let r = state.rows[i];
       if (!r.t) continue;
       
-      let data = await fetchStockPriceAndDiv(r.t);
-      if (data.price && data.price > 0) {
-        r.price = data.price;
+      let newPrice = await fetchSingleStockPrice(r.t);
+      if (newPrice && newPrice > 0) {
+        r.price = newPrice;
         successCount++;
       }
-      if (data.divPer && data.divPer > 0) {
+      
+      let newDiv = await fetchSingleStockDiv(r.t);
+      if (newDiv && newDiv > 0) {
         if (!r.div) r.div = dvOf(r);
-        r.div.per = data.divPer;
+        r.div.per = newDiv;
       }
 
-      await sleep(150);
+      await sleep(100);
     }
     
     save(); 
