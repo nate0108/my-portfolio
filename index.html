@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커 (시세 최신화 & 수기 관리 완벽 보완)</title>
+  <title>배당 목표 트래커 (Yahoo Finance 실시간 시세 완벽 반영)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
@@ -143,7 +143,7 @@
     <div class="headr">
       <div class="toolsRow">
         <button type="button" class="saveBtnMain" id="mainSaveBtn">💾 저장 (Firebase 연동)</button>
-        <button type="button" id="apiKeyBtn">🔑 실시간 API 연동됨</button>
+        <button type="button" id="apiKeyBtn">🔑 Yahoo 실시간 연동됨</button>
         <button type="button" id="themeBtn">☀️ 라이트모드</button>
         <button type="button" class="mini" id="exportBtn">📥 백업</button>
         <button type="button" class="mini" id="importBtn">📤 복원</button>
@@ -175,10 +175,10 @@
   <section class="panel">
     <header>
       <div>
-        <h2>보유 종목 · 시세 및 API 공시 배당 데이터</h2>
-        <span class="sub">버튼 클릭 시 최신 실시간 주가를 수집하거나, 현재가 칸에 수기로 자유롭게 수정이 가능합니다.</span>
+        <h2>보유 종목 · 시세 및 공시 배당 데이터 (Yahoo Finance 연동)</h2>
+        <span class="sub">버튼 클릭 시 가장 빠르고 안정적인 야후 파이낸스 데이터를 통해 실시간 주가를 수집합니다. 수기 변경도 언제든 가능합니다.</span>
       </div>
-      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화 (API)</button>
+      <button type="button" class="mini" id="refreshBtn">🔄 시세 & 배당 최신화</button>
     </header>
     <div class="scroll"><table id="holdTbl" style="min-width:920px">
       <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">매입단가</th><th class="r">현재가</th><th class="r">평가금액</th><th class="r">평가손익</th><th class="r">수익률</th><th class="r">API 공시 배당금(1회)</th><th class="r">배당 주기</th><th class="r">배당률</th><th></th></tr></thead>
@@ -233,7 +233,7 @@
 
 <script>
 // -------------------------------------------------------------
-// Firebase 및 실시간 시세 API 환경 구성
+// Firebase 및 환경 구성
 // -------------------------------------------------------------
 const firebaseConfig = {
   apiKey: "AIzaSyDMfIjJ10pc6Z0UhMDElEkMeELqXV5wXTo",
@@ -251,59 +251,9 @@ if (!firebase.apps.length) {
 const db = firebase.database();
 const dbRef = db.ref("dividend_tracker_data");
 
-const FMP_API_KEY = "0UNSJ9Gam6kLzSrxoea4rDpLsErBeDfF";
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+var isUserEditing = false; 
 
-var isUserEditing = false; // 수기 입력 중 클라우드 덮어쓰기 방지 락
-
-// 실시간 시세 & 배당 수신
-async function fetchStockPriceAndDiv(symbol) {
-  let price = null;
-  let divPer = null;
-
-  // 1차: Stooq.com API
-  try {
-    let res = await fetch(`https://stooq.com/q/l/?s=${symbol}.us&f=sdgl1ovn&e=json`);
-    if (res.ok) {
-      let data = await res.json();
-      if (data && data.symbols && data.symbols[0] && data.symbols[0].close) {
-        let p = parseFloat(data.symbols[0].close);
-        if (!isNaN(p) && p > 0) price = p;
-      }
-    }
-  } catch (e) {}
-
-  // 2차: FMP quote-short API Direct
-  if (!price) {
-    try {
-      let res = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
-      if (res.ok) {
-        let data = await res.json();
-        if (Array.isArray(data) && data.length > 0 && data[0].price) {
-          let p = parseFloat(data[0].price);
-          if (!isNaN(p) && p > 0) price = p;
-        }
-      }
-    } catch (e) {}
-  }
-
-  // 공시 주당 배당금 (FMP API)
-  try {
-    let dUrl = `https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${symbol}?apikey=${FMP_API_KEY}`;
-    let res = await fetch(dUrl);
-    if (res.ok) {
-      let data = await res.json();
-      if (data && Array.isArray(data.historical) && data.historical.length > 0) {
-        let latestDiv = data.historical[0].dividend;
-        if (latestDiv && latestDiv > 0) divPer = parseFloat(latestDiv);
-      }
-    }
-  } catch(e) {}
-
-  return { price: price, divPer: divPer };
-}
-
-// 수기 입력 타이핑 처리기
 window.updateOverride = function(inputEl, rowIndex, monthIndex) {
   isUserEditing = true;
   window.markDirty();
@@ -382,7 +332,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     return (x >= 0 ? '+' : '-') + usd(Math.abs(x));
   }
 
-  // 기본 테마 다크모드
+  // 테마 관리
   var savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
@@ -397,27 +347,16 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
     applyTheme(next);
   });
 
+  // 보안 로직
   var savedPw = localStorage.getItem(PW_KEY) || DEFAULT_PW;
-
   function checkUnlock() {
     var val = $('passInput').value.trim();
-    if (val === savedPw || val === '2179') {
-      unlock();
-    } else {
-      $('lockErrMsg').textContent = '비밀번호가 일치하지 않습니다.';
-      $('passInput').value = '';
-    }
+    if (val === savedPw || val === '2179') { unlock(); } 
+    else { $('lockErrMsg').textContent = '비밀번호 불일치'; $('passInput').value = ''; }
   }
-
   $('passBtn').addEventListener('click', checkUnlock);
-  $('passInput').addEventListener('keypress', function(e){
-    if(e.key === 'Enter') { e.preventDefault(); checkUnlock(); }
-  });
-
-  function unlock(){
-    $('lockOverlay').style.display = 'none';
-    $('mainApp').style.display = 'flex';
-  }
+  $('passInput').addEventListener('keypress', function(e){ if(e.key === 'Enter') { e.preventDefault(); checkUnlock(); } });
+  function unlock(){ $('lockOverlay').style.display = 'none'; $('mainApp').style.display = 'flex'; }
 
   $('changePwBtn').addEventListener('click', function(){
     var oldPw = prompt('현재 비밀번호를 입력하세요:');
@@ -426,23 +365,18 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
       if(newPw && newPw.trim()){
         localStorage.setItem(PW_KEY, newPw.trim());
         savedPw = newPw.trim();
-        alert('비밀번호가 변경되었습니다.');
+        alert('비밀번호 변경 완료');
       }
-    } else if(oldPw !== null){
-      alert('현재 비밀번호가 일치하지 않습니다.');
-    }
+    } else if(oldPw !== null) { alert('비밀번호 불일치'); }
   });
 
-  $('apiKeyBtn').addEventListener('click', function(){
-    alert('실시간 주가 API 파이프라인이 정상 구축되어 있습니다.');
-  });
+  $('apiKeyBtn').addEventListener('click', function(){ alert('현재 FMP 우회를 버리고, 안전하고 강력한 Yahoo Finance Direct Gateway를 사용 중입니다.'); });
 
   var CURRENT_YEAR = new Date().getFullYear();
 
   function normalize(st){
     st.tax = (typeof st.tax==='number') ? st.tax : 15;
     st.rows = (st.rows||[]).filter(function(r){return r && r.t});
-    
     st.rows.forEach(function(r){
       if(r.t === 'SCHD'){
         if(!r.div) r.div = {per:0.256, freq:'q369', name:'Schwab U.S. Dividend ETF'};
@@ -483,79 +417,142 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
         $('saveState').textContent = '☁️ 실시간 동기화 완료';
         $('saveState').className = '';
       }).catch(function(){
-        $('saveState').textContent = '⚠️ 저장 실패 (네트워크 확인)';
+        $('saveState').textContent = '⚠️ 저장 실패';
       });
     } catch(e){}
   }
   window.saveAppData = save;
 
   $('mainSaveBtn').addEventListener('click', function(){
-    save();
-    build(); update();
-    alert('모든 수정사항이 Firebase 클라우드 DB에 완전히 저장되었습니다!');
+    save(); build(); update(); alert('저장 완료!');
   });
 
-  // 실시간 시세 및 공시 배당금 최신화 실행 함수
+  // =========================================================
+  // 완벽 개편된 실시간 데이터 수집 (Yahoo Direct Gateway)
+  // =========================================================
   async function fetchLiveMarketData() {
+    var btn = $('refreshBtn');
+    var originalText = btn.textContent;
+    btn.textContent = '🔄 수집 중 (잠시 대기)...';
+    btn.disabled = true;
     $('saveState').textContent = '🔄 실시간 시세 수집 중...';
+    
     let successCount = 0;
 
     for (let i = 0; i < state.rows.length; i++) {
       let r = state.rows[i];
-      if (!r.t) continue;
+      if (!r.t || r.sold) continue; 
       
-      let data = await fetchStockPriceAndDiv(r.t);
-      if (data.price && data.price > 0) {
-        r.price = data.price;
-        var pInput = $('p' + i);
-        if (pInput) pInput.value = data.price;
-        successCount++;
-      }
-      
-      if (data.divPer && data.divPer > 0) {
-        if (!r.div) r.div = dvOf(r);
-        r.div.per = data.divPer;
+      let price = null;
+      let annualDiv = null;
+      let cb = new Date().getTime(); // 강력한 캐시 방지 스탬프
+
+      // 1순위: 야후 파이낸스 QuoteSummary (AllOrigins 릴레이 - 주가 및 ETF/주식 배당금 동시수집)
+      try {
+        let yUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${r.t}?modules=price,summaryDetail&_cb=${cb}`;
+        let pUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(yUrl)}`;
+        let res = await fetch(pUrl);
+        if (res.ok) {
+          let pData = await res.json();
+          if (pData && pData.contents) {
+            let yData = JSON.parse(pData.contents);
+            let resObj = yData?.quoteSummary?.result?.[0];
+            
+            if (resObj) {
+              let p = resObj?.price?.regularMarketPrice?.raw;
+              if (p && p > 0) price = p;
+              
+              let ad = resObj?.summaryDetail?.dividendRate?.raw;
+              if (ad && ad > 0) {
+                 annualDiv = ad; // 개별 주식 배당금
+              } else {
+                 let yld = resObj?.summaryDetail?.yield?.raw;
+                 if (yld && yld > 0 && price) {
+                    annualDiv = price * yld; // ETF 배당금 추산
+                 }
+              }
+            }
+          }
+        }
+      } catch (e) { console.error("Yahoo Summary 에러:", e); }
+
+      // 2순위: 야후 차트 API 백업 (QuoteSummary 실패 시 주가라도 확보)
+      if (!price) {
+        try {
+          let yUrl2 = `https://query1.finance.yahoo.com/v8/finance/chart/${r.t}?interval=1d&range=1d&_cb=${cb}`;
+          let pUrl2 = `https://api.allorigins.win/get?url=${encodeURIComponent(yUrl2)}`;
+          let res2 = await fetch(pUrl2);
+          if (res2.ok) {
+            let pData2 = await res2.json();
+            if (pData2 && pData2.contents) {
+               let yData2 = JSON.parse(pData2.contents);
+               let p2 = yData2?.chart?.result?.[0]?.meta?.regularMarketPrice;
+               if (p2 && p2 > 0) price = p2;
+            }
+          }
+        } catch(e){}
       }
 
-      await sleep(100);
+      // 수신 데이터 상태에 주입 및 즉각 화면 갱신
+      let updated = false;
+      if (price !== null) {
+        r.price = price;
+        let pInput = $('p' + i);
+        if (pInput) pInput.value = price;
+        updated = true;
+      }
+
+      if (annualDiv !== null) {
+        if (!r.div) {
+           var dObj = dvOf(r);
+           r.div = { per: dObj.per, freq: dObj.freqKey, name: dObj.name };
+        }
+        let mLen = FREQ[r.div.freq] ? FREQ[r.div.freq].m.length : 4;
+        if (mLen > 0) {
+          r.div.per = (annualDiv / mLen);
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        successCount++;
+        update(); // 화면 평가금 계산 즉시 재실행
+      }
+
+      await sleep(350); // 프록시 IP 차단 방지용 약간의 지연
     }
     
-    save(); 
-    build(); 
-    update();
-    alert(`총 ${successCount}개 종목의 실시간 주가 및 공시 배당금이 완벽히 반영되었습니다!`);
+    btn.textContent = originalText;
+    btn.disabled = false;
+    
+    save(); build(); update();
+    $('saveState').textContent = '☁️ 실시간 동기화 완료';
+    
+    if (successCount > 0) {
+      alert(`총 ${successCount}개 종목 최신 시세 업데이트 완료!`);
+    } else {
+      alert("시세 업데이트 실패: 인터넷 연결이나 종목코드(티커)를 확인해주세요.");
+    }
   }
 
   $('refreshBtn').addEventListener('click', function(){
     fetchLiveMarketData();
   });
 
-  $('hideSoldBtn').addEventListener('click', function(){
-    hideSold = !hideSold;
-    this.textContent = hideSold ? '👁️ 미보유 종목 표시' : '👁️ 미보유 종목 숨기기';
-    this.classList.toggle('toggleOn', hideSold);
-    build(); update();
-  });
-
   // Firebase 실시간 동기화
   dbRef.on('value', function(snapshot){
     if (isUserEditing) return;
-    
     var val = snapshot.val();
     if(val && val.rows){
       state = normalize(val);
       window.appState = state;
       localStorage.setItem(KEY, JSON.stringify(state));
-      if (!document.activeElement || document.activeElement.tagName !== 'INPUT') {
-        build();
-      }
+      if (!document.activeElement || document.activeElement.tagName !== 'INPUT') { build(); }
       update();
       $('saveState').textContent = '☁️ 실시간 동기화 완료';
       $('saveState').className = '';
     }
-  }, function(error){
-    $('saveState').textContent = '⚠️ 동기화 오류';
-  });
+  }, function(error){ $('saveState').textContent = '⚠️ 동기화 오류'; });
 
   var NOW = new Date();
 
@@ -576,11 +573,18 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
         var imported = JSON.parse(evt.target.result);
         if(imported && Array.isArray(imported.rows)){
           state = normalize(imported); window.appState = state; save(); build(); update();
-          alert('백업 데이터를 성공적으로 불러왔습니다.');
+          alert('백업 데이터 복원 완료.');
         }
-      } catch(err){ alert('파일 읽기 오류'); }
+      } catch(err){ alert('오류'); }
     };
     reader.readAsText(file);
+  });
+
+  $('hideSoldBtn').addEventListener('click', function(){
+    hideSold = !hideSold;
+    this.textContent = hideSold ? '👁️ 미보유 종목 표시' : '👁️ 미보유 종목 숨기기';
+    this.classList.toggle('toggleOn', hideSold);
+    build(); update();
   });
 
   function dvOf(r){
@@ -660,8 +664,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
           var el = $(k+i); 
           if(el) el.addEventListener('input', function(e){
             state.rows[i][{q:'qty',c:'cost',p:'price'}[k]] = parseFloat(e.target.value) || 0; 
-            window.markDirty();
-            update();
+            window.markDirty(); update();
           });
         });
 
@@ -669,8 +672,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
         if(freqEl) freqEl.addEventListener('change', function(e){
           if(!state.rows[i].div) state.rows[i].div = dvOf(state.rows[i]);
           state.rows[i].div.freq = e.target.value;
-          window.markDirty();
-          build(); update();
+          window.markDirty(); build(); update();
         });
       }
 
@@ -820,8 +822,7 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
   $('tax').addEventListener('input', function(e){
     var v = parseFloat(e.target.value);
     state.tax = isNaN(v) ? 0 : v;
-    window.markDirty();
-    update();
+    window.markDirty(); update();
   });
 
   build(); update();
