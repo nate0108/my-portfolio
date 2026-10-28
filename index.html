@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>배당 목표 트래커 (시세 최신화 완벽 해결)</title>
+  <title>배당 목표 트래커 (시세 최신화 검증 및 완벽 수정)</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap">
   
   <!-- Firebase SDK (v9 Compat) -->
@@ -256,65 +256,77 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 var isUserEditing = false; // 수기 입력 중 클라우드 덮어쓰기 방지 락
 
-// 실시간 주가 수신 (다중 API 백업 채널 포함 3중 파이프라인)
-async function fetchSingleStockPrice(symbol) {
-  // 1차 시도: FMP Direct
+// 실시간 시세 & 배당 수신 (Stooq + Yahoo + FMP 4중 파이프라인)
+async function fetchStockPriceAndDiv(symbol) {
+  let price = null;
+  let divPer = null;
+
+  // 1차: Stooq.com API (CORS 무관, 가장 안정적)
   try {
-    let res = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
+    let res = await fetch(`https://stooq.com/q/l/?s=${symbol}.us&f=sdgl1ovn&e=json`);
     if (res.ok) {
       let data = await res.json();
-      if (Array.isArray(data) && data.length > 0 && data[0].price) {
-        return parseFloat(data[0].price);
+      if (data && data.symbols && data.symbols[0] && data.symbols[0].close) {
+        let p = parseFloat(data.symbols[0].close);
+        if (!isNaN(p) && p > 0) price = p;
       }
     }
   } catch (e) {}
 
-  // 2차 시도: Yahoo Finance API (AllOrigins Proxy)
-  try {
-    let yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
-    let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yUrl)}`;
-    let res = await fetch(pUrl);
-    if (res.ok) {
-      let data = await res.json();
-      let price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      if (price && !isNaN(price)) return parseFloat(price);
-    }
-  } catch (e) {}
-
-  // 3차 시도: FMP Corsproxy Fallback
-  try {
-    let fUrl = `https://financialmodelingprep.com/api/v3/quote/${symbol}?apikey=${FMP_API_KEY}`;
-    let pUrl = `https://corsproxy.io/?${encodeURIComponent(fUrl)}`;
-    let res = await fetch(pUrl);
-    if (res.ok) {
-      let data = await res.json();
-      if (Array.isArray(data) && data.length > 0 && data[0].price) {
-        return parseFloat(data[0].price);
+  // 2차: Yahoo Finance Direct Chart API
+  if (!price) {
+    try {
+      let res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`);
+      if (res.ok) {
+        let data = await res.json();
+        let p = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (p && !isNaN(p) && p > 0) price = parseFloat(p);
       }
-    }
-  } catch(e) {}
+    } catch (e) {}
+  }
 
-  return null;
-}
+  // 3차: FMP quote-short API Direct
+  if (!price) {
+    try {
+      let res = await fetch(`https://financialmodelingprep.com/api/v3/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
+      if (res.ok) {
+        let data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].price) {
+          let p = parseFloat(data[0].price);
+          if (!isNaN(p) && p > 0) price = p;
+        }
+      }
+    } catch (e) {}
+  }
 
-// 공시 주당 배당금 (DPS) 수신
-async function fetchSingleStockDiv(symbol) {
+  // 4차: AllOrigins Proxy Fallback
+  if (!price) {
+    try {
+      let yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+      let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yUrl)}`;
+      let res = await fetch(pUrl);
+      if (res.ok) {
+        let data = await res.json();
+        let p = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (p && !isNaN(p) && p > 0) price = parseFloat(p);
+      }
+    } catch(e) {}
+  }
+
+  // 공시 주당 배당금 (FMP API)
   try {
     let dUrl = `https://financialmodelingprep.com/api/v3/historical-price-full/stock_dividend/${symbol}?apikey=${FMP_API_KEY}`;
     let res = await fetch(dUrl);
-    if (!res.ok) {
-      let pUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(dUrl)}`;
-      res = await fetch(pUrl);
-    }
     if (res.ok) {
       let data = await res.json();
       if (data && Array.isArray(data.historical) && data.historical.length > 0) {
         let latestDiv = data.historical[0].dividend;
-        if (latestDiv && latestDiv > 0) return parseFloat(latestDiv);
+        if (latestDiv && latestDiv > 0) divPer = parseFloat(latestDiv);
       }
     }
   } catch(e) {}
-  return null;
+
+  return { price: price, divPer: divPer };
 }
 
 // 수기 입력 타이핑 처리기
@@ -518,16 +530,17 @@ window.onInputBlur = function(inputEl, rowIndex, monthIndex) {
       let r = state.rows[i];
       if (!r.t) continue;
       
-      let newPrice = await fetchSingleStockPrice(r.t);
-      if (newPrice && newPrice > 0) {
-        r.price = newPrice;
+      let data = await fetchStockPriceAndDiv(r.t);
+      if (data.price && data.price > 0) {
+        r.price = data.price;
+        var pInput = $('p' + i);
+        if (pInput) pInput.value = data.price;
         successCount++;
       }
       
-      let newDiv = await fetchSingleStockDiv(r.t);
-      if (newDiv && newDiv > 0) {
+      if (data.divPer && data.divPer > 0) {
         if (!r.div) r.div = dvOf(r);
-        r.div.per = newDiv;
+        r.div.per = data.divPer;
       }
 
       await sleep(100);
